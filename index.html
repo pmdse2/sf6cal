@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SF6 GIS Calculator — ฝบร. กฟน.</title>
+<style>
+  :root {
+    --color-background-primary:#ffffff;--color-background-secondary:#f7f7f8;
+    --color-text-primary:#1a1a1a;--color-text-secondary:#6b7280;
+    --color-border-primary:#9ca3af;--color-border-secondary:#d1d5db;
+    --color-border-tertiary:#e5e7eb;
+    --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --font-mono:'SF Mono','Fira Code','Consolas',monospace;
+    --touch-min:44px; /* minimum touch target */
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--font-sans);background:var(--color-background-primary);color:var(--color-text-primary);padding:12px;min-height:100vh;font-size:14px;}
+  input,select{width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:6px;font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary);font-family:var(--font-sans);min-height:var(--touch-min);}
+  input:focus,select:focus{outline:none;border-color:var(--color-border-primary);}
+  button{font-family:var(--font-sans);cursor:pointer;min-height:var(--touch-min);touch-action:manipulation;}
+  ::-webkit-scrollbar{width:4px;height:4px;}
+  ::-webkit-scrollbar-thumb{background:var(--color-border-secondary);border-radius:2px;}
+  h1{font-size:18px;font-weight:600;margin-bottom:4px;}
+  .app-badge{font-size:12px;padding:2px 9px;background:rgba(55,138,221,0.1);color:#185FA5;border-radius:10px;border:0.5px solid rgba(55,138,221,0.3);}
+
+  /* ── App header ── */
+  .app-header{display:flex;align-items:center;gap:10px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--color-border-tertiary);}
+
+  /* ── Drawer overlay ── */
+  .drawer-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;}
+  .drawer-overlay.open{display:block;}
+  .drawer-panel{position:fixed;top:0;left:0;bottom:0;width:85%;max-width:320px;background:var(--color-background-primary);z-index:201;overflow-y:auto;padding:16px;transform:translateX(-100%);transition:transform 0.25s ease;box-shadow:4px 0 20px rgba(0,0,0,0.15);}
+  .drawer-panel.open{transform:translateX(0);}
+  .drawer-close{position:absolute;top:12px;right:12px;background:none;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:4px 8px;font-size:16px;cursor:pointer;min-height:36px;color:var(--color-text-secondary);}
+
+  /* ── Hamburger button (mobile only) ── */
+  .btn-menu{display:none;background:none;border:0.5px solid var(--color-border-secondary);border-radius:6px;padding:6px 10px;font-size:18px;cursor:pointer;min-height:var(--touch-min);color:var(--color-text-primary);}
+
+  /* ── Tab bar ── */
+  .tab-bar{display:flex;overflow-x:auto;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:12px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .tab-bar::-webkit-scrollbar{display:none;}
+  .tab-btn{flex-shrink:0;padding:8px 14px;font-size:13px;border:none;background:none;cursor:pointer;white-space:nowrap;min-height:40px;touch-action:manipulation;}
+
+  /* ── Bay scroll container ── */
+  .bay-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:8px;}
+  .bay-row{display:inline-flex;gap:8px;align-items:flex-start;min-width:100%;}
+
+  /* ── Tablet (768px+): sidebar always visible ── */
+  @media (min-width:768px){
+    .btn-menu{display:none !important;}
+    .drawer-overlay,.drawer-panel{display:none !important;}
+    .sidebar-desktop{display:block !important;}
+    body{padding:16px;}
+  }
+  /* ── Mobile (<768px): drawer mode ── */
+  @media (max-width:767px){
+    .btn-menu{display:flex;align-items:center;justify-content:center;}
+    .sidebar-desktop{display:none;}
+    body{padding:10px;}
+    h1{font-size:16px;}
+    input,select{font-size:16px;} /* prevent iOS zoom */
+    .tab-btn{padding:8px 12px;font-size:12px;}
+  }
+</style>
+</head>
+<body>
+<div class="app-header">
+  <button class="btn-menu" id="menuBtn" onclick="openDrawer()" aria-label="เมนู">☰</button>
+  <div style="flex:1">
+    <h1>⚡ SF6 GIS Calculator</h1>
+    <div style="font-size:12px;color:#6b7280;">ฝบร. การไฟฟ้านครหลวง</div>
+  </div>
+  <span class="app-badge">v10.4</span>
+</div>
+<div id="drawerOverlay" class="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawerPanel" class="drawer-panel">
+  <button class="drawer-close" onclick="closeDrawer()">✕</button>
+  <div style="margin-top:8px;" id="drawerContent"></div>
+</div>
+<div id="root" style="position:relative;min-height:600px;"></div>
+<script>
+function openDrawer(){
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.getElementById('drawerPanel').classList.add('open');
+}
+function closeDrawer(){
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.getElementById('drawerPanel').classList.remove('open');
+}
+function isMobile(){return window.innerWidth<768;}
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+(function(){
+const h=React.createElement,{useState}=React;
+const TC={CB:'#378ADD',DS:'#1D9E75',Busbar:'#4B9E3C',BusA:'#BA7517',BusB:'#993556',CT:'#D4537E',VT:'#7F77DD',Cable:'#888780',ES:'#639922',LA:'#E24B4A',Buffer:'#7E6DA0'};
+const sB={fontSize:13,padding:'6px 12px',border:'0.5px solid var(--color-border-secondary)',borderRadius:5,background:'none',color:'var(--color-text-secondary)',cursor:'pointer',minHeight:'40px',touchAction:'manipulation'};
+const sBP={...sB,background:'var(--color-text-primary)',color:'var(--color-background-primary)',borderColor:'var(--color-text-primary)'};
+const sBD={...sB,color:'#E24B4A',borderColor:'rgba(226,75,74,0.3)'};
+const sBG={...sB,color:'#1D9E75',borderColor:'rgba(29,158,117,0.4)'};
+/* icon button (text) */
+const iB={background:'none',border:'0.5px solid var(--color-border-secondary)',cursor:'pointer',padding:'5px 9px',color:'var(--color-text-secondary)',fontSize:13,borderRadius:4,flexShrink:0,minHeight:'36px',touchAction:'manipulation'};
+const iBD={...iB,color:'#E24B4A',borderColor:'rgba(226,75,74,0.3)'};
+const iBG={...iB,color:'#1D9E75',borderColor:'rgba(29,158,117,0.3)'};
+const KVO=[230,115,69,24,12];
+/* ── Equipment Database (GIS & GCB only, no Metal-Clad) ── */
+const INIT_EQ_DB={
+  'HV GIS':{
+    230:{
+      'GE':['B105'],
+      'GE ALSTOM':['FK3-1'],
+      'ALSTOM':[],
+    },
+    115:{
+      'ABB':['ELK-04','EXK-0'],
+      'SIEMENS':['8DN8'],
+      'ELIN HOLEC':['L-SEP'],
+      'HOLEC':['L-SEP'],
+      'GEC ALSTOM':['B 312'],
+      'GE ALSTOM':['F35-145kV','F 135'],
+      'ALSTOM':['GL309WF1'],
+      'AREVA':['B 65'],
+      'NISSIN':['GT-12-8GM','GT14-48'],
+      'VA TECH':['TH7m','DTH7m'],
+      'SPRECHER':['B 312','B 212'],
+      'XIAN':['ZF7'],
+      'HITACHI ABB':['ELK-04'],
+      'MITSUBISHI':['SFMT'],
+    },
+    69:{
+      'ABB':['ELK-04','EXK-0','EXK-01'],
+      'SIEMENS':['8DN8','8DA8'],
+      'GEC ALSTOM':['B 312','F 35'],
+      'ALSTOM':['GL309WF1'],
+      'SPRECHER':['B 312','B 212','BHG112'],
+      'NISSIN':['GD-7-C','GT-12-8GM'],
+      'ELIN HOLEC':['L-SEP'],
+      'HOLEC':['L-SEP'],
+      'HITACHI ABB':['ELK-04'],
+      'VA TECH':['DTH7m'],
+      'AREVA':['F 35'],
+    }
+  },
+  'MV GIS':{
+    24:{
+      'SIEMENS':['8DA10'],
+      'ABB':['BEU2'],
+      'SCHNEIDER':['WSA 6/24-2/623','WSA'],
+      'AREVA':['WSA 6/24-2/623'],
+      'AEG':['WSA 6/24-2/623'],
+      'MEIDEN':[],
+      'MEIDENSHIA':[],
+    },
+    12:{
+      'ABB':['BEU2'],
+    }
+  },
+  'GCB':{
+    115:{
+      'ABB':[],
+      'SIEMENS':[],
+      'ALSTOM':[],
+      'S&E':[],
+    }
+  }
+};
+const dbMfrs=(db,zone,kv)=>Object.keys((db[zone]&&db[zone][kv])||{});
+const dbModels=(db,zone,kv,mfr)=>((db[zone]&&db[zone][kv]&&db[zone][kv][mfr])||[]);
+function dbAddMfr(db,zone,kv,mfr){const d=JSON.parse(JSON.stringify(db));if(!d[zone])d[zone]={};if(!d[zone][kv])d[zone][kv]={};if(!d[zone][kv][mfr])d[zone][kv][mfr]=[];return d;}
+function dbAddModel(db,zone,kv,mfr,model){const d=JSON.parse(JSON.stringify(db));if(!d[zone])d[zone]={};if(!d[zone][kv])d[zone][kv]={};if(!d[zone][kv][mfr])d[zone][kv][mfr]=[];if(!d[zone][kv][mfr].includes(model))d[zone][kv][mfr].push(model);return d;}
+
+/* ── SmartSelect: dropdown + "+ เพิ่มใหม่" with duplicate check ── */
+function SmartSelect({options,value,onChange,onAddNew,placeholder,disabled}){
+  const [adding,sAdd]=useState(false);const [nv,sNv]=useState('');const [err,sErr]=useState('');
+  const norm=s=>s.toLowerCase().replace(/\s+/g,'');
+  function tryAdd(){
+    const t=nv.trim();if(!t){sErr('กรุณากรอก');return;}
+    if(options.some(o=>norm(o)===norm(t))){sErr('ชื่อซ้ำ (รวมถึงการเว้นวรรค)');return;}
+    onAddNew(t);onChange(t);sAdd(false);sNv('');sErr('');
+  }
+  if(adding)return h('div',null,
+    h('div',{style:{display:'flex',gap:3}},
+      h('input',{value:nv,onChange:e=>{sNv(e.target.value);sErr('');},placeholder:placeholder||'กรอกชื่อใหม่',
+        onKeyDown:e=>{if(e.key==='Enter')tryAdd();if(e.key==='Escape'){sAdd(false);sErr('');sNv('');}},
+        autoFocus:true,style:{flex:1}}),
+      h('button',{style:{...sBP,padding:'3px 7px',flexShrink:0},onClick:tryAdd},'✓'),
+      h('button',{style:{...sB,padding:'3px 6px',flexShrink:0},onClick:()=>{sAdd(false);sErr('');sNv('');}},h('span',null,'✕'))
+    ),
+    err&&h('div',{style:{fontSize:11,color:'#E24B4A',marginTop:2}},err)
+  );
+  return h('select',{value:value||'',disabled:!!disabled,
+    onChange:e=>{if(e.target.value==='__ADD__')sAdd(true);else onChange(e.target.value);}},
+    h('option',{value:''},'— เลือก —'),
+    options.map(o=>h('option',{key:o,value:o},o)),
+    h('option',{value:'__ADD__'},'+ เพิ่มใหม่...')
+  );
+}
+let _id=9000;const nid=()=>++_id;
+const upd=(a,id,fn)=>a.map(x=>x.id===id?fn(x):x);
+const uS=(s,sid,fn)=>upd(s,sid,fn);
+const uE=(s,sid,eid,fn)=>uS(s,sid,x=>({...x,equipment:upd(x.equipment,eid,fn)}));
+const uB=(s,sid,eid,bid,fn)=>uE(s,sid,eid,x=>({...x,bays:upd(x.bays,bid,fn)}));
+const cpMs=ms=>ms.map(m=>({...m,uid:nid(),edited:false}));
+const cpBTs=ts=>ts.map(t=>({...t,id:nid(),modules:cpMs(t.modules||[])}));
+const cpBs=bs=>bs.map(b=>({...b,id:nid(),modules:cpMs(b.modules||[])}));
+const cpEq=e=>({id:nid(),name:e.name,kv:e.kv,mfr:e.mfr,model:e.model,zone:e.zone,bays:cpBs(e.bays||[]),templates:cpBTs(e.templates||[])});
+const cpSub=(s,nm)=>({id:nid(),name:nm,equipment:(s.equipment||[]).map(e=>cpEq(e))});
+function grp(mods){const g=[];let i=0;const isB=t=>t==='BusA'||t==='BusB';while(i<mods.length){const m=mods[i],n=mods[i+1];const prevIsBus=g.length>0&&g[g.length-1].k==='bus';if(isB(m.type)&&n&&isB(n.type)&&m.type!==n.type){g.push({k:'bus',a:m.type==='BusA'?m:n,b:m.type==='BusB'?m:n});i+=2;}else if(m.type==='DS'&&n&&n.type==='DS'&&prevIsBus){g.push({k:'ds',a:m,b:n});i+=2;}else{g.push({k:'s',m});i++;}}return g;}
+
+const ILIB=[
+  {id:6,type:'CB',mfr:'ABB',model:'ELK-04',kv:115,sf6:2.9,zone:'HV GIS'},
+  {id:7,type:'DS',mfr:'ABB',model:'ELK-04',kv:115,sf6:0.7,zone:'HV GIS'},
+  {id:8,type:'BusA',mfr:'ABB',model:'ELK-04',kv:115,sf6:1.3,zone:'HV GIS'},
+  {id:9,type:'BusB',mfr:'ABB',model:'ELK-04',kv:115,sf6:1.3,zone:'HV GIS'},
+];
+function mkMs(sp,pfx){return sp.map(([t,mfr,model,sf6],i)=>({uid:pfx+i,type:t,mfr,model,sf6,edited:false}));}
+const _SR=[
+  {n:'กิ่งเพชร',s:'KP'},{n:'กิ่งแก้ว',s:'KI'},{n:'ขุนศรี',s:'KUS'},
+  {n:'คลองกระเทียม',s:'KKM'},{n:'คลองจั่น',s:'KJ'},{n:'คลองด่าน',s:'KDT'},
+  {n:'คลองมหาสวัสดิ์',s:'KMS'},{n:'คลองร้อย',s:'KRI'},{n:'คลองรังสิต',s:'KRT'},
+  {n:'คลองวัดสิงห์',s:'KWS'},{n:'คลองสนามชัย',s:'KSC'},{n:'คลองสรรพสามิต',s:'KS'},
+  {n:'คลองสิบศอก',s:'KSK'},{n:'คลองเตย',s:'KT'},{n:'คลองใหม่',s:'KM'},
+  {n:'คอต่อ',s:'KO'},{n:'ครุใน',s:'KU'},{n:'คันนายาว',s:'KNY'},
+  {n:'จตุจักร',s:'CTJ'},{n:'จระเข้ใหญ่',s:'CKY'},{n:'จันทร์เกษม',s:'CK'},{n:'ชิดลม',s:'CLT'},
+  {n:'ดอนเมือง',s:'DM'},{n:'ดินแดง',s:'DDG'},
+  {n:'ตากสิน',s:'TS'},{n:'ทรงสะอาด',s:'SSA'},{n:'ทวีวัฒนา',s:'TWN'},{n:'ทับยาว',s:'TY'},
+  {n:'ท้ายบ้าน',s:'TBN'},{n:'ท้องคุ้ง',s:'TK'},{n:'ทุ่งสองห้อง',s:'TH'},{n:'ถนนตก',s:'TTT'},
+  {n:'ธนบุรี',s:'TB'},{n:'ธนบุรีรมย์',s:'TBR'},{n:'ธนบุรีใต้',s:'STT'},
+  {n:'นนทบุรี',s:'NR'},{n:'นนทรี',s:'NS'},{n:'นวลจันทร์',s:'NCN'},
+  {n:'นางเลิ้ง',s:'NLG'},{n:'นานา',s:'NN'},{n:'นิมิตรใหม่',s:'NMI'},
+  {n:'บางกระดี่',s:'BKD'},{n:'บางกระเจ้า',s:'BC'},{n:'บางกอกน้อย',s:'BOT'},{n:'บางกะปิ',s:'BAT'},
+  {n:'บางซ่อน',s:'BZ'},{n:'บางซื่อ',s:'BET'},{n:'บางตำรุ',s:'BTR'},{n:'บางนา',s:'BG'},
+  {n:'บางน้ำจืด',s:'BJ'},{n:'บางบอน',s:'BB'},{n:'บางบัวทอง',s:'BBO'},
+  {n:'บางปลา',s:'BPA'},{n:'บางปลากด',s:'BK'},{n:'บางปิ้ง',s:'BI'},{n:'บางปู',s:'BU'},
+  {n:'บางพลี',s:'BPT'},{n:'บางพูด',s:'BD'},{n:'บางมด',s:'BM'},{n:'บางยี่ขัน',s:'BY'},
+  {n:'บางโคล่',s:'BL'},{n:'บางโฉลง',s:'BN'},{n:'บางโพงพาง',s:'BPP'},
+  {n:'บางไผ่',s:'BPI'},{n:'บางแค',s:'BKE'},{n:'บางเมือง',s:'BMU'},
+  {n:'บางเลน',s:'BLN'},{n:'บางเสาธง',s:'BS'},{n:'บางขุนพรหม',s:'BR'},
+  {n:'บางรักใหญ่',s:'BRY'},{n:'บางชัน',s:'BCN'},{n:'แบริ่ง',s:'BRG'},
+  {n:'ประชาชื่น',s:'PC'},{n:'ประดิพัทธ์',s:'PP'},{n:'ประสานมิตร',s:'PA'},{n:'ประเวศ',s:'PWE'},
+  {n:'ปทุมวัน',s:'PM'},{n:'ปากน้ำ',s:'PN'},{n:'ปากเกร็ด',s:'PE'},{n:'ปู่เจ้า',s:'PJ'},
+  {n:'พญาไท',s:'PYA'},{n:'พระนครเหนือ',s:'NKT'},{n:'พระนครใต้',s:'SKT'},
+  {n:'พระโขนง',s:'PK'},{n:'พระประแดง',s:'PD'},{n:'พลับพลา',s:'PPL'},
+  {n:'พรานนก',s:'PO'},{n:'พัฒนาการ',s:'PTN'},{n:'พุทธรักษา',s:'PTS'},{n:'พร้อมพงษ์',s:'PPG'},
+  {n:'ฉลองกรุง',s:'CG'},{n:'ฉิมพลี',s:'CPI'},
+  {n:'มหาเมฆ',s:'MM'},{n:'มักกะสัน',s:'MS'},{n:'มิตรไมตรี',s:'MMR'},
+  {n:'มีนบุรี',s:'MB'},{n:'มไหสวรรย์',s:'MN'},
+  {n:'ไม้อัด',s:'MA'},{n:'ไทรน้อย',s:'SIT'},
+  {n:'ยานนาวา',s:'YNW'},
+  {n:'ร่มเกล้า',s:'RK'},{n:'รัชดาภิเษก',s:'RDT'},{n:'รัตนราช',s:'RTR'},{n:'รัตนาธิเบศร์',s:'RTB'},
+  {n:'รามคำแหง',s:'RH'},{n:'รามอินทรา',s:'RT'},{n:'ราษฎร์บูรณะ',s:'RN'},{n:'ราชปรารภ',s:'RPR'},
+  {n:'รุ่งประชา',s:'RC'},
+  {n:'ลาดกระบัง',s:'LB'},{n:'ลาดปลาเค้า',s:'LK'},{n:'ลาดพร้าว',s:'LPT'},
+  {n:'ลาดหญ้า',s:'LYA'},{n:'ลุมพินี',s:'LN'},
+  {n:'วัดกำแพง',s:'WKP'},{n:'วัดคู่สร้าง',s:'WKS'},{n:'วัดประชาบำรุง',s:'WPC'},
+  {n:'วัดเลียบ',s:'WL'},{n:'วังทองหลาง',s:'WT'},{n:'วังเพชรบูรณ์',s:'WB'},{n:'วิภาวดี',s:'VDT'},
+  {n:'สนามบินน้ำ',s:'SB'},{n:'สวนส้ม',s:'SO'},{n:'สวนหลวง',s:'SG'},{n:'สวนใหญ่',s:'SYI'},
+  {n:'สะพานดำ',s:'SD'},{n:'สะพานใหม่',s:'SP'},{n:'สามย่าน',s:'SAM'},{n:'สามเสน',s:'SN'},
+  {n:'สายน้ำทิพย์',s:'SA'},{n:'สายลม',s:'SM'},{n:'สำโรง',s:'SRS'},
+  {n:'ศรีเอี่ยม',s:'SE'},{n:'ศรีเวียง',s:'SWG'},{n:'ศูนย์วิจัย',s:'SV'},
+  {n:'สี่พระยา',s:'SY'},{n:'สีลม',s:'SL'},{n:'สุรวงศ์',s:'SU'},{n:'สุรศักดิ์',s:'SRK'},
+  {n:'สุวินทวงศ์',s:'STW'},{n:'เสาระหง',s:'SRH'},
+  {n:'หนองจอก',s:'NJT'},{n:'หนองแขม',s:'NH'},{n:'หมอชิต',s:'MC'},
+  {n:'หลักสี่',s:'LSI'},{n:'หลวงแพ่ง',s:'LPG'},{n:'ห้วยขวาง',s:'HK'},
+  {n:'อ่อนนุช',s:'ONT'},
+  {n:'เกษตร',s:'KE'},{n:'เกาะกลาง',s:'GK'},{n:'เทพารักษ์',s:'TPT'},
+  {n:'เพชรเกษม',s:'PS'},{n:'เมืองทอง1',s:'M1'},{n:'เมืองทอง3',s:'M3'},
+  {n:'เมืองใหม่',s:'MG'},{n:'เย็นอากาศ',s:'YK'},{n:'เอกชัย',s:'EKC'},{n:'เอกมัย',s:'EM'},
+  {n:'แจงร้อน',s:'JRN'},{n:'แจ้งวัฒนะ',s:'JWT'},{n:'แพรกษา',s:'PR'},{n:'แสนแสบ',s:'SS'},
+  {n:'โยธี',s:'YT'},{n:'ไผ่สิงโต',s:'PI'},
+];
+_SR.sort((a,b)=>a.n.localeCompare(b.n,'th'));
+const ISUBS=_SR.map((s,i)=>({id:i+1,name:`${s.n} (${s.s})`,equipment:[]}));
+
+/* ── Dialogs ── */
+function ConfirmDlg({msg,onYes,onNo}){
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.35)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center'}},
+    h('div',{style:{background:'var(--color-background-primary)',border:'0.5px solid var(--color-border-secondary)',borderRadius:10,padding:'20px 22px',maxWidth:290,width:'90%',boxShadow:'0 8px 32px rgba(0,0,0,0.15)'}},
+      h('div',{style:{fontSize:14,marginBottom:16,lineHeight:1.6}},msg),
+      h('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
+        h('button',{style:sB,onClick:onNo},'ยกเลิก'),
+        h('button',{style:{...sBP,background:'#E24B4A',borderColor:'#E24B4A'},onClick:onYes},'ยืนยัน')
+      )
+    )
+  );
+}
+function SaveTplDlg({title,existing,onSave,onCancel}){
+  const [nm,sNm]=useState('');const [err,sErr]=useState('');
+  function go(){const t=nm.trim();if(!t){sErr('กรุณากรอกชื่อ');return;}if(existing&&existing.some(x=>x.name.toLowerCase()===t.toLowerCase())){sErr('ชื่อซ้ำ');return;}onSave(t);}
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center'}},
+    h('div',{style:{background:'var(--color-background-primary)',border:'0.5px solid var(--color-border-secondary)',borderRadius:10,padding:'22px',width:290,boxShadow:'0 8px 32px rgba(0,0,0,0.2)'}},
+      h('div',{style:{fontWeight:500,fontSize:14,marginBottom:12}},title||'บันทึก'),
+      h('input',{value:nm,onChange:e=>sNm(e.target.value),placeholder:'ชื่อ',autoFocus:true,onKeyDown:e=>{if(e.key==='Enter')go();if(e.key==='Escape')onCancel();},style:{marginBottom:err?5:12}}),
+      err&&h('div',{style:{fontSize:12,color:'#E24B4A',marginBottom:10}},err),
+      h('div',{style:{display:'flex',gap:8}},h('button',{style:{...sBP,flex:1},onClick:go},'บันทึก'),h('button',{style:{...sB,flex:1},onClick:onCancel},'ยกเลิก'))
+    )
+  );
+}
+
+/* ── Tag ── */
+function Tag({c,children}){return h('span',{style:{fontSize:12,padding:'2px 6px',border:`0.5px solid ${c?c+'44':'var(--color-border-secondary)'}`,borderRadius:3,color:c||'var(--color-text-secondary)',background:c?c+'11':undefined,flexShrink:0}},children);}
+
+/* ── TypeSelect ── */
+function TypeSelect({value,onChange,mt,setMt}){
+  const [sa,sSa]=useState(false);const [nT,sNT]=useState('');const [err,sErr]=useState('');
+  function doAdd(){const t=nT.trim();if(!t){sErr('กรุณากรอก');return;}if(mt.some(x=>x.toLowerCase()===t.toLowerCase())){sErr('ซ้ำ');return;}setMt(p=>[...p,t]);onChange(t);sNT('');sSa(false);sErr('');}
+  return h('div',null,
+    h('div',{style:{display:'flex',gap:3,alignItems:'center'}},
+      sa?h(React.Fragment,null,
+        h('select',{value,onChange:e=>onChange(e.target.value),style:{width:72,flexShrink:0}},mt.map(t=>h('option',{key:t,value:t},t))),
+        h('input',{value:nT,onChange:e=>{sNT(e.target.value);sErr('');},placeholder:'ชื่อใหม่',style:{flex:1},onKeyDown:e=>e.key==='Enter'&&doAdd(),autoFocus:true}),
+        h('button',{style:{...sBP,padding:'3px 8px',flexShrink:0},onClick:doAdd},'✓'),
+        h('button',{style:{...sB,padding:'3px 7px',flexShrink:0},onClick:()=>{sSa(false);sErr('');}},h('span',null,'✕'))
+      ):h(React.Fragment,null,
+        h('select',{value,onChange:e=>onChange(e.target.value),style:{flex:1}},mt.map(t=>h('option',{key:t,value:t},t))),
+        h('button',{style:{...sB,padding:'3px 8px',flexShrink:0,whiteSpace:'nowrap'},onClick:()=>sSa(true)},'+ ประเภท')
+      )
+    ),
+    err&&h('div',{style:{fontSize:11,color:'#E24B4A',marginTop:2}},err)
+  );
+}
+
+/* ── ModItem (Compartment) ── */
+/* helper */
+const modTotal=(m,sp)=>sp?((m.sfR??m.sf6)+(m.sfY??m.sf6)+(m.sfB??m.sf6)):m.sf6;
+/* SP: count each R/Y/B phase separately; non-SP: 1 point per module */
+const modPoints=(m,sp)=>sp?3:1;
+const modEdited=(m,sp)=>sp?((m.editedR?1:0)+(m.editedY?1:0)+(m.editedB?1:0)):(m.edited?1:0);
+const modAllEdited=(m,sp)=>sp?(!!m.editedR&&!!m.editedY&&!!m.editedB):!!m.edited;
+const initSP=sf6=>({sfR:sf6,sfY:sf6,sfB:sf6,editedR:false,editedY:false,editedB:false});
+const makeMod=(base,sp,createdBy)=>({uid:nid(),type:base.type,mfr:base.mfr,model:base.model,sf6:base.sf6,edited:false,createdBy:createdBy||'',...(sp?initSP(base.sf6):{})});
+
+/* ── ModItem (normal, non-SP) ── */
+function ModItem({m,onRm,onEd,half,lbl}){
+  const [hov,sH]=useState(false);const [edit,sE]=useState(false);const [val,sV]=useState('');
+  const c=TC[m.type]||'#888';const isEd=!!m.edited;
+  function startEdit(e){e.stopPropagation();sV(String(m.sf6));sE(true);}
+  function saveEdit(){const n=parseFloat(val);if(!isNaN(n)&&n>=0)onEd(m.uid,null,n);sE(false);}
+  const hs=half?{flex:'1 1 0',minWidth:0}:{};
+  if(edit)return h('div',{style:{...hs,borderLeft:`3px solid ${c}`,background:`${c}20`,borderRadius:6,padding:'7px 7px 7px 9px'}},
+    h('div',{style:{fontWeight:600,fontSize:12,color:c,marginBottom:5,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},lbl||m.type),
+    h('div',{style:{display:'flex',flexDirection:'column',gap:4},onClick:e=>e.stopPropagation()},
+      /* input always full width of the (half) container */
+      h('input',{type:'number',step:'0.01',value:val,onChange:e=>sV(e.target.value),
+        onKeyDown:e=>{if(e.key==='Enter')saveEdit();if(e.key==='Escape')sE(false);},
+        autoFocus:true,
+        style:{padding:'4px 6px',fontSize:13,height:28,width:'100%',borderRadius:4,boxSizing:'border-box'}}),
+      /* buttons row below input */
+      h('div',{style:{display:'flex',gap:3}},
+        h('button',{title:'บันทึก (Enter)',style:{flex:1,background:'#378ADD',border:'none',color:'#fff',borderRadius:4,height:26,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'},onClick:saveEdit},'✓'),
+        h('button',{title:'ยกเลิก (Esc)',style:{flex:1,background:'none',border:'0.5px solid var(--color-border-secondary)',borderRadius:4,height:26,fontSize:13,cursor:'pointer',color:'var(--color-text-secondary)',display:'flex',alignItems:'center',justifyContent:'center'},onClick:e=>{e.stopPropagation();sE(false);}},'✕')
+      )
+    )
+  );
+  return h('div',{style:{...hs,position:'relative',borderLeft:`3px solid ${c}`,background:`${c}15`,borderRadius:6,padding:'7px 8px 7px 9px'},onMouseEnter:()=>sH(true),onMouseLeave:()=>sH(false)},
+    h('div',{style:{fontWeight:600,fontSize:13,color:c,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},lbl||m.type),
+    /* SF6 value + badge on one line */
+    h('div',{style:{display:'flex',alignItems:'center',gap:5,marginTop:3,flexWrap:'nowrap'}},
+      h('span',{style:{fontSize:13,color:isEd?'#378ADD':'var(--color-text-secondary)',fontFamily:'var(--font-mono)',cursor:'pointer',flexShrink:0},onClick:startEdit,title:'คลิกแก้ไข'},m.sf6.toFixed(2),' kg'),
+      isEd&&h('span',{style:{fontSize:10,background:'#378ADD',color:'#fff',borderRadius:3,padding:'1px 5px',lineHeight:'16px',flexShrink:0,whiteSpace:'nowrap'}},'จริง')
+    ),
+    hov&&!edit&&h('div',{style:{position:'absolute',top:4,right:4,width:17,height:17,borderRadius:'50%',background:'rgba(226,75,74,0.15)',color:'#E24B4A',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:13,fontWeight:700},onClick:e=>{e.stopPropagation();onRm(m.uid);}},'×')
+  );
+}
+
+/* ── PhaseRow: one R/Y/B row inside SP ModItem ── */
+function PhaseRow({label,val,edited,onEdit}){
+  const [hov,sH]=useState(false);const [edit,sE]=useState(false);const [v,sV]=useState('');
+  const pColor={R:'#E24B4A',Y:'#BA7517',B:'#378ADD'}[label]||'#888';
+  function start(e){e.stopPropagation();sV(String(val));sE(true);}
+  function save(){const n=parseFloat(v);if(!isNaN(n)&&n>=0)onEdit(label,n);sE(false);}
+  if(edit)return h('div',{style:{marginTop:3,borderLeft:`2px solid ${pColor}`,background:`${pColor}08`,borderRadius:4,padding:'5px 6px'},onClick:e=>e.stopPropagation()},
+    h('div',{style:{fontSize:11,color:pColor,fontWeight:700,marginBottom:4}},`Phase ${label}`),
+    h('input',{type:'number',step:'0.01',value:v,onChange:e=>sV(e.target.value),
+      onKeyDown:e=>{if(e.key==='Enter')save();if(e.key==='Escape')sE(false);},
+      autoFocus:true,
+      style:{padding:'4px 6px',fontSize:13,height:28,width:'100%',borderRadius:4,boxSizing:'border-box',marginBottom:4}}),
+    h('div',{style:{display:'flex',gap:3}},
+      h('button',{title:'บันทึก (Enter)',style:{flex:1,background:pColor,border:'none',color:'#fff',borderRadius:4,height:26,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'},onClick:save},'✓'),
+      h('button',{title:'ยกเลิก (Esc)',style:{flex:1,background:'none',border:'0.5px solid var(--color-border-secondary)',borderRadius:4,height:26,fontSize:13,cursor:'pointer',color:'var(--color-text-secondary)',display:'flex',alignItems:'center',justifyContent:'center'},onClick:e=>{e.stopPropagation();sE(false);}},'✕')
+    )
+  );
+  /* display row */
+  return h('div',{style:{display:'flex',alignItems:'center',gap:4,marginTop:3,padding:'2px 4px',borderRadius:3,background:hov?`${pColor}10`:undefined,cursor:'pointer'},
+    onMouseEnter:()=>sH(true),onMouseLeave:()=>sH(false),onClick:start},
+    h('span',{style:{fontSize:12,color:pColor,fontWeight:700,flexShrink:0,width:11}},label),
+    h('span',{style:{fontSize:13,fontFamily:'var(--font-mono)',color:edited?pColor:'var(--color-text-secondary)',flex:1,whiteSpace:'nowrap'}},val.toFixed(2),' kg'),
+    edited?h('span',{style:{fontSize:10,background:pColor,color:'#fff',borderRadius:3,padding:'1px 4px',lineHeight:'16px',flexShrink:0,whiteSpace:'nowrap'}},'จริง')
+          :hov&&h('span',{style:{fontSize:10,color:pColor,opacity:0.7,flexShrink:0}},'✎')
+  );
+}
+
+/* ── ModItemSP: Single-Phase version ── */
+function ModItemSP({m,onRm,onEdPhase,half,lbl}){
+  const [hov,sH]=useState(false);
+  const c=TC[m.type]||'#888';
+  const hs=half?{flex:'1 1 0',minWidth:0}:{};
+  const sfR=m.sfR??m.sf6;const sfY=m.sfY??m.sf6;const sfB=m.sfB??m.sf6;
+  const anyEd=!!(m.editedR||m.editedY||m.editedB);const allEd=!!(m.editedR&&m.editedY&&m.editedB);
+  return h('div',{style:{...hs,position:'relative',borderLeft:`3px solid ${c}`,background:`${c}12`,borderRadius:6,padding:'7px 8px 7px 9px'},onMouseEnter:()=>sH(true),onMouseLeave:()=>sH(false)},
+    /* header row: type + badge */
+    h('div',{style:{display:'flex',alignItems:'center',gap:4,marginBottom:2}},
+      h('span',{style:{fontWeight:600,fontSize:13,color:c,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},lbl||m.type),
+      allEd&&h('span',{style:{fontSize:10,background:'#378ADD',color:'#fff',borderRadius:3,padding:'1px 5px',lineHeight:'16px',flexShrink:0,whiteSpace:'nowrap'}},'จริง'),
+      anyEd&&!allEd&&h('span',{style:{fontSize:10,background:'#BA7517',color:'#fff',borderRadius:3,padding:'1px 4px',lineHeight:'16px',flexShrink:0,whiteSpace:'nowrap'}},'บางส่วน')
+    ),
+    h(PhaseRow,{label:'R',val:sfR,edited:!!m.editedR,onEdit:(ph,v)=>onEdPhase(m.uid,ph,v)}),
+    h(PhaseRow,{label:'Y',val:sfY,edited:!!m.editedY,onEdit:(ph,v)=>onEdPhase(m.uid,ph,v)}),
+    h(PhaseRow,{label:'B',val:sfB,edited:!!m.editedB,onEdit:(ph,v)=>onEdPhase(m.uid,ph,v)}),
+    /* total row */
+    h('div',{style:{display:'flex',alignItems:'center',gap:4,marginTop:4,paddingTop:4,borderTop:`0.5px solid ${c}25`}},
+      h('span',{style:{fontSize:11,color:'var(--color-text-secondary)',flexShrink:0}},'รวม'),
+      h('span',{style:{fontSize:13,fontFamily:'var(--font-mono)',color:anyEd?'#378ADD':'var(--color-text-secondary)',fontWeight:anyEd?500:400}},(sfR+sfY+sfB).toFixed(2),' kg')
+    ),
+    hov&&h('div',{style:{position:'absolute',top:4,right:4,width:17,height:17,borderRadius:'50%',background:'rgba(226,75,74,0.15)',color:'#E24B4A',display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:13,fontWeight:700},onClick:e=>{e.stopPropagation();onRm(m.uid);}},'×')
+  );
+}
+function Conn(){return h('div',{style:{width:2,height:7,background:'var(--color-border-secondary)',margin:'2px auto'}});}
+function YConn(){return h('svg',{width:'100%',height:12,style:{display:'block'},viewBox:'0 0 120 12'},h('line',{x1:20,y1:0,x2:60,y2:12,stroke:'#aaa',strokeWidth:1.5}),h('line',{x1:100,y1:0,x2:60,y2:12,stroke:'#aaa',strokeWidth:1.5}));}
+
+/* ── BayCol ── */
+function BayCol({bay,isSel,onSel,onRm,onEd,onEdPhase,onSvT,onDel,isDrg,isDrO,onDS,onDO,onDP,onDE,sp,askDelete,savedByName}){
+  const gs=grp(bay.modules);
+  const tot=bay.modules.reduce((s,m)=>s+modTotal(m,sp),0);
+  const hasEd=bay.modules.some(m=>m.edited);
+  const allEd=bay.modules.length>0&&bay.modules.every(m=>modAllEdited(m,sp));
+  const edN=bay.modules.reduce((s,m)=>s+modEdited(m,sp),0);
+  const totN=bay.modules.reduce((s,m)=>s+modPoints(m,sp),0);
+  /* safeRm: ตรวจสิทธิ์ก่อนลบ Compartment */
+  const safeRm=(uid)=>{
+    const mod=bay.modules.find(m=>m.uid===uid);
+    askDelete(mod,`ลบ Compartment "${mod?mod.type:''}" ออกจาก Bay นี้?`,()=>onRm(uid));
+  };
+  /* SP needs more width for phase rows; non-SP bumped up too */
+  const colW=sp?260:220;
+  const MI=(props)=>sp?h(ModItemSP,{...props,onEdPhase}):h(ModItem,{...props,onEd});
+  return h('div',{draggable:true,
+    style:{width:colW,flexShrink:0,border:`${isDrO||isSel?'2px':'1px'} solid ${isDrO?'#E24B4A':isSel?'#378ADD':'var(--color-border-tertiary)'}`,borderRadius:8,background:'var(--color-background-primary)',overflow:'hidden',opacity:isDrg?0.35:1,position:'relative',cursor:'pointer'},
+    onDragStart:e=>{e.dataTransfer.effectAllowed='move';onDS(bay.id);},onDragOver:e=>{e.preventDefault();onDO(bay.id);},
+    onDrop:e=>{e.preventDefault();onDP(bay.id);},onDragEnd:onDE,onClick:()=>onSel(bay.id)},
+    isDrO&&h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:3,background:'#E24B4A',zIndex:1}}),
+    h('div',{style:{padding:'6px 7px',borderBottom:'0.5px solid var(--color-border-tertiary)',background:isSel?'rgba(55,138,221,0.07)':'var(--color-background-secondary)',display:'flex',gap:4,alignItems:'center'}},
+      h('span',{style:{fontSize:13,color:'var(--color-text-secondary)',opacity:0.5,flexShrink:0,userSelect:'none'}},'⠿'),
+      h('span',{style:{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}},bay.name),
+      sp&&h('span',{style:{fontSize:9,background:'#993556',color:'#fff',borderRadius:2,padding:'0 3px',flexShrink:0}},'3Φ'),
+      h('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',flexShrink:0}},
+        h('span',{style:{fontSize:11,fontFamily:'var(--font-mono)',color:allEd?'#378ADD':hasEd?'#BA7517':'var(--color-text-secondary)'}},tot.toFixed(1),'k'),
+        hasEd&&!allEd&&h('span',{style:{fontSize:10,color:'#BA7517'}},edN,'/',totN)
+      )
+    ),
+    h('div',{style:{padding:5,minHeight:50}},
+      gs.length===0?h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',textAlign:'center',padding:'14px 0'}},'ว่าง')
+      :gs.map((g,i)=>{const prev=gs[i-1];const yC=i>0&&prev&&(prev.k==='bus'||prev.k==='ds');
+        return h(React.Fragment,{key:i},yC?h(YConn):i>0?h(Conn):null,
+          g.k==='bus'?h('div',{style:{display:'flex',gap:2}},h(MI,{m:g.a,onRm:safeRm,half:true}),h(MI,{m:g.b,onRm:safeRm,half:true}))
+          :g.k==='ds'?h('div',{style:{display:'flex',gap:2}},h(MI,{m:g.a,onRm:safeRm,half:true,lbl:'DS-A'}),h(MI,{m:g.b,onRm:safeRm,half:true,lbl:'DS-B'}))
+          :h(MI,{m:g.m,onRm:safeRm})
+        );
+      })
+    ),
+    h('div',{style:{borderTop:'0.5px solid var(--color-border-tertiary)',padding:'4px 6px',display:'flex',justifyContent:'space-between',gap:4}},
+      h('button',{style:{...sB,fontSize:11,padding:'2px 6px'},onClick:e=>{e.stopPropagation();onSvT(bay);}},'+ Bay Tpl'),
+      h('button',{style:{...sBD,fontSize:11,padding:'2px 6px'},onClick:e=>{e.stopPropagation();onDel(bay.id);}},'ลบ')
+    )
+  );
+}
+
+/* ── QuickAddCompartmentForm ── */
+function QuickAddCompartmentForm({eq,onAdd,onCancel,mt,setMt}){
+  const [qm,sQm]=useState({type:'CB',sf6:''});
+  return h('div',{style:{border:'0.5px solid #378ADD',borderRadius:6,padding:10,marginBottom:10,background:'rgba(55,138,221,0.04)'}},
+    h('div',{style:{display:'flex',gap:5,marginBottom:8,alignItems:'center',flexWrap:'wrap'}},
+      h('span',{style:{fontSize:12,color:'var(--color-text-secondary)'}},'Auto-fill:'),h(Tag,null,eq.mfr||'?'),h(Tag,null,eq.model||'?'),h(Tag,null,eq.kv+'kV')
+    ),
+    h('div',{style:{marginBottom:6}},h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:3}},'ประเภท Compartment'),h(TypeSelect,{value:qm.type,onChange:t=>sQm({...qm,type:t}),mt,setMt})),
+    h('div',{style:{marginBottom:8}},h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:3}},'SF6 Default (kg)'),h('input',{type:'number',step:'0.01',value:qm.sf6,onChange:e=>sQm({...qm,sf6:e.target.value}),placeholder:'3.20',autoFocus:true})),
+    h('div',{style:{display:'flex',gap:7}},
+      h('button',{style:{...sBP,flex:1},onClick:()=>{if(!qm.sf6)return;onAdd({type:qm.type,sf6:+qm.sf6});}},'เพิ่ม Bay + Library'),
+      h('button',{style:{...sB,flex:1},onClick:onCancel},'ยกเลิก')
+    )
+  );
+}
+
+/* ── DesignerView (Bay Configuration) ── */
+function DesignerView({eq,sid,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addModFn,edSf6Fn,edSf6PhaseFn,saveTplFn,delBayFn,delTplFn,reorderFn,askConfirm,askDelete,mt,setMt,onSaveEqTpl,savedByName}){
+  const [nbn,sNbn]=useState('');const [stpl,sStpl]=useState('');const [showNB,sShowNB]=useState(false);
+  const [savBayT,sSavBayT]=useState(null);const [bayTNm,sBayTNm]=useState('');
+  const [showQA,sShowQA]=useState(false);const [drg,sDrg]=useState(null);const [drO,sDrO]=useState(null);
+  const selBO=eq.bays.find(b=>b.id===selBay);
+  const sp=!!eq.singlePhase;
+  const eqTot=eq.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modTotal(m,sp),0),0);
+  const eqLib=lib.filter(m=>m.mfr===eq.mfr&&m.model===eq.model&&m.kv===eq.kv);
+  function handleDrop(tid){if(drg===null||drg===tid){sDrg(null);sDrO(null);return;}const bs=[...eq.bays];const f=bs.findIndex(b=>b.id===drg),t2=bs.findIndex(b=>b.id===tid);if(f===-1||t2===-1){sDrg(null);sDrO(null);return;}const[mv]=bs.splice(f,1);bs.splice(t2,0,mv);reorderFn(sid,eq.id,bs);sDrg(null);sDrO(null);}
+  const eqEdited=eq.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modEdited(m,sp),0),0);
+  const eqTotal=eq.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modPoints(m,sp),0),0);
+  return h('div',null,
+    /* header */
+    h('div',{style:{display:'flex',alignItems:'center',gap:7,marginBottom:10,paddingBottom:10,borderBottom:'0.5px solid var(--color-border-tertiary)',flexWrap:'wrap'}},
+      h('span',{style:{fontSize:14,fontWeight:500}},eq.name),h(Tag,null,eq.kv+'kV'),eq.mfr&&h(Tag,null,eq.mfr),eq.model&&h(Tag,null,eq.model),
+      sp&&h('span',{style:{fontSize:12,padding:'2px 7px',background:'rgba(153,53,86,0.1)',color:'#993556',border:'0.5px solid rgba(153,53,86,0.3)',borderRadius:10}},'Single Phase Enclosure'),
+      h('div',{style:{marginLeft:'auto',display:'flex',alignItems:'center',gap:10}},
+        h('button',{style:sBG,onClick:()=>onSaveEqTpl(eq)},'บันทึก รูปแบบอุปกรณ์'),
+        h('div',{style:{textAlign:'right'}},
+          h('div',{style:{fontSize:13,fontWeight:500,fontFamily:'var(--font-mono)'}},eqTot.toFixed(2),' kg SF6'),
+          eqTotal>0&&h('div',{style:{fontSize:11,color:eqEdited===eqTotal?'#378ADD':eqEdited>0?'#BA7517':'var(--color-text-secondary)'}},
+            eqEdited===eqTotal?'✓ ครบทุกค่าจริง':eqEdited>0?`จริง ${eqEdited}/${eqTotal}`:'ประมาณการ'
+          )
+        )
+      )
+    ),
+    /* hint */
+    h('div',{style:{fontSize:12,padding:'5px 10px',background:'var(--color-background-secondary)',borderRadius:6,marginBottom:10,color:'var(--color-text-secondary)',display:'flex',gap:12,flexWrap:'wrap',alignItems:'center'}},
+      '💡 คลิกตัวเลข SF6 ใน Compartment เพื่อแก้ไขค่าจริง',
+      h('span',null,h('span',{style:{fontFamily:'var(--font-mono)',fontSize:11}},'2.10 kg'),' = Default '),
+      h('span',{style:{fontFamily:'var(--font-mono)',fontSize:11,color:'#378ADD'}},'3.00 kg'),h('span',{style:{background:'#378ADD',color:'#fff',borderRadius:2,padding:'0 3px',fontSize:10,lineHeight:'15px'}},'จริง')
+    ),
+    /* bay templates */
+    eq.templates.length>0&&h('div',{style:{marginBottom:10}},
+      h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:4}},'Bay Templates:'),
+      h('div',{style:{display:'flex',gap:5,flexWrap:'wrap'}},
+        eq.templates.map(t=>h('div',{key:t.id,style:{display:'flex',alignItems:'center',gap:4,padding:'3px 7px 3px 9px',border:'0.5px solid var(--color-border-secondary)',borderRadius:4,background:'var(--color-background-secondary)',fontSize:12}},
+          t.name,' (',t.modules.length,')',
+          h('button',{style:{...iBD,padding:'1px 5px',marginLeft:2},onClick:()=>askConfirm(`ลบ Template "${t.name}"?`,()=>delTplFn(sid,eq.id,t.id))},'ลบ')
+        ))
+      )
+    ),
+    /* save bay template inline */
+    savBayT&&h('div',{style:{display:'flex',alignItems:'center',gap:7,padding:'7px 10px',background:'var(--color-background-secondary)',borderRadius:6,marginBottom:10,fontSize:12,flexWrap:'wrap'}},
+      h('span',{style:{color:'var(--color-text-secondary)'}},'จาก Bay:'),h('strong',null,savBayT.name),h('span',null,'→'),
+      h('input',{value:bayTNm,onChange:e=>sBayTNm(e.target.value),placeholder:'ชื่อ Template',style:{flex:1,maxWidth:160},
+        onKeyDown:e=>{if(e.key==='Enter'&&bayTNm){saveTplFn(sid,eq.id,{id:nid(),name:bayTNm,modules:cpMs(savBayT.modules)});sSavBayT(null);sBayTNm('');}}
+      }),
+      h('button',{style:{...sBP,flexShrink:0},onClick:()=>{if(!bayTNm)return;saveTplFn(sid,eq.id,{id:nid(),name:bayTNm,modules:cpMs(savBayT.modules)});sSavBayT(null);sBayTNm('');}},'\u00a0บันทึก\u00a0'),
+      h('button',{style:{...sB,flexShrink:0},onClick:()=>sSavBayT(null)},'ยกเลิก')
+    ),
+    /* bay row */
+    h('div',{style:{overflowX:'auto',paddingBottom:8},onDragOver:e=>e.preventDefault()},
+      h('div',{style:{display:'inline-flex',gap:8,alignItems:'flex-start',paddingBottom:4,minWidth:'100%'}},
+        eq.bays.map(b=>h(BayCol,{key:b.id,bay:b,isSel:b.id===selBay,isDrg:drg===b.id,isDrO:drO===b.id&&drg!==b.id,
+          onDS:id=>sDrg(id),onDO:id=>sDrO(id),onDP:handleDrop,onDE:()=>{sDrg(null);sDrO(null);},
+          onSel:id=>setSelBay(p=>p===id?null:id),onRm:uid=>rmModFn(sid,eq.id,b.id,uid),
+          onEd:(uid,_ph,v)=>edSf6Fn(sid,eq.id,b.id,uid,v),
+          onEdPhase:(uid,ph,v)=>edSf6PhaseFn(sid,eq.id,b.id,uid,ph,v),
+          sp,onSvT:bay=>sSavBayT(bay),askDelete,savedByName,
+          onDel:id=>{const bay=eq.bays.find(b=>b.id===id);askDelete(bay,`ลบ Bay "${bay?.name}"?`,()=>{delBayFn(sid,eq.id,id);if(selBay===id)setSelBay(null);})}
+        })),
+        showNB?h('div',{style:{width:136,flexShrink:0,border:'0.5px solid var(--color-border-secondary)',borderRadius:8,padding:9}},
+          h('div',{style:{fontSize:12,fontWeight:500,marginBottom:6,color:'var(--color-text-secondary)'}},'Bay ใหม่'),
+          h('input',{value:nbn,onChange:e=>sNbn(e.target.value),placeholder:'ชื่อ Bay',style:{marginBottom:6},autoFocus:true}),
+          eq.templates.length>0&&h('select',{value:stpl,onChange:e=>sStpl(e.target.value),style:{marginBottom:6}},
+            h('option',{value:''},'— เริ่มว่าง —'),eq.templates.map(t=>h('option',{key:t.id,value:t.id},t.name))
+          ),
+          h('div',{style:{display:'flex',gap:5}},
+            h('button',{style:{...sBP,flex:1,padding:'4px'},onClick:()=>{if(!nbn)return;const tpl=eq.templates.find(t=>t.id===+stpl);const nb={id:nid(),name:nbn,modules:tpl?cpMs(tpl.modules):[]};addBayFn(sid,eq.id,nb);setSelBay(nb.id);sNbn('');sStpl('');sShowNB(false);}},'เพิ่ม'),
+            h('button',{style:{...sB,flex:1,padding:'4px'},onClick:()=>sShowNB(false)},'ยกเลิก')
+          )
+        ):h('div',{style:{width:34,alignSelf:'center',height:64,flexShrink:0,border:'1.5px dashed var(--color-border-secondary)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',cursor:savedByName?'pointer':'not-allowed',color:savedByName?'var(--color-text-secondary)':'var(--color-border-secondary)',fontSize:22},
+            onClick:()=>{if(!savedByName)return;sShowNB(true);},title:savedByName?'เพิ่ม Bay':'กรุณากรอกรหัสพนักงานก่อน'},'+')
+      )
+    ),
+    /* compartment picker */
+    selBO&&h('div',{style:{marginTop:10,borderTop:'0.5px solid var(--color-border-tertiary)',paddingTop:12}},
+      h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap',gap:5}},
+        h('span',{style:{fontSize:13,fontWeight:500}},'Compartment ใน ',h('span',{style:{color:'#378ADD'}},selBO.name)),
+        h('div',{style:{display:'flex',gap:5}},h(Tag,null,eq.mfr),h(Tag,null,eq.model),h(Tag,null,eq.kv+'kV'))
+      ),
+      showQA&&h(QuickAddCompartmentForm,{eq,mt,setMt,onCancel:()=>sShowQA(false),onAdd:({type,sf6})=>{
+        const nm2={id:nid(),type,mfr:eq.mfr,model:eq.model,kv:eq.kv,sf6,zone:eq.zone};
+        setLib(p=>[...p,nm2]);
+        addModFn(sid,eq.id,selBay,makeMod(nm2,sp,savedByName));
+        sShowQA(false);
+      }}),
+      eqLib.length===0&&!showQA?h('div',{style:{textAlign:'center',padding:'16px',border:'1px dashed var(--color-border-secondary)',borderRadius:8}},
+        h('div',{style:{fontSize:13,color:'var(--color-text-secondary)',marginBottom:8}},'ยังไม่มี Compartment สำหรับ ',h('strong',null,eq.mfr,' ',eq.model,' ',eq.kv,'kV')),
+        h('button',{style:sBP,onClick:()=>sShowQA(true)},'+ เพิ่ม Compartment')
+      ):h(React.Fragment,null,
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(136px,1fr))',gap:5,maxHeight:160,overflowY:'auto',marginBottom:7}},
+          eqLib.map(m=>h('div',{key:m.id,style:{display:'flex',alignItems:'center',gap:6,padding:'6px 8px',border:'0.5px solid var(--color-border-tertiary)',borderRadius:5}},
+            h('div',{style:{width:9,height:9,borderRadius:'50%',background:TC[m.type]||'#888',flexShrink:0}}),
+            h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12,fontWeight:500}},m.type),h('div',{style:{fontSize:11,color:'var(--color-text-secondary)'}},m.sf6.toFixed(2),' kg')),
+            h('button',{style:{width:20,height:20,borderRadius:'50%',border:'0.5px solid var(--color-border-secondary)',background:'none',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,cursor:'pointer',padding:0,color:'var(--color-text-secondary)'},
+              onClick:()=>addModFn(sid,eq.id,selBay,makeMod(m,sp,savedByName))
+            },'+')
+          ))
+        ),
+        !showQA&&h('button',{style:{...sB,width:'100%',borderStyle:'dashed',padding:'5px'},onClick:()=>sShowQA(true)},'+ เพิ่ม Compartment ใหม่')
+      )
+    )
+  );
+}
+
+/* ── Compartment Library Tab ── */
+function LibraryTab({lib,setLib,askConfirm,askDelete,mt,setMt,subs,updateMod,eqTypes,setEqTypes,eqDB,setEqDB,savedByName}){
+  const [srch,sSrch]=useState('');const [showAdd,sShowAdd]=useState(false);
+  const [nm,sNm]=useState({type:'CB',mfr:'',model:'',kv:115,sf6:'',zone:'HV GIS'});
+  const [expBrand,sExpBrand]=useState({});       /* brand: true=expanded */
+  const [expModel,sExpModel]=useState({});       /* mfr__model__kv: true=expanded */
+  const [eId,sEId]=useState(null);const [eF,sEF]=useState({});
+
+  const fL=lib.filter(m=>!srch||`${m.type} ${m.mfr} ${m.model} ${m.kv}`.toLowerCase().includes(srch.toLowerCase()));
+  const gr={};fL.forEach(m=>{if(!gr[m.mfr])gr[m.mfr]={};const k=`${m.model}__${m.kv}`;if(!gr[m.mfr][k])gr[m.mfr][k]={model:m.model,kv:m.kv,zone:m.zone,modules:[]};gr[m.mfr][k].modules.push(m);});
+  const mfrs=Object.keys(gr);
+
+  function cNE(m){return subs.reduce((n,s)=>n+s.equipment.reduce((n2,e)=>n2+e.bays.reduce((n3,b)=>n3+b.modules.filter(bm=>bm.type===m.type&&bm.mfr===m.mfr&&bm.model===m.model&&!bm.edited).length,0),0),0);}
+  function cE(m){return subs.reduce((n,s)=>n+s.equipment.reduce((n2,e)=>n2+e.bays.reduce((n3,b)=>n3+b.modules.filter(bm=>bm.type===m.type&&bm.mfr===m.mfr&&bm.model===m.model&&bm.edited).length,0),0),0);}
+
+  return h('div',null,
+    /* search + add button */
+    h('div',{style:{display:'flex',gap:7,marginBottom:10}},
+      h('input',{style:{flex:1},placeholder:'ค้นหา ยี่ห้อ, รุ่น, ประเภท...',value:srch,onChange:e=>sSrch(e.target.value)}),
+      h('button',{style:sBP,onClick:()=>sShowAdd(p=>!p)},'+ Compartment')
+    ),
+    h('div',{style:{fontSize:12,padding:'6px 10px',background:'rgba(186,117,23,0.07)',borderRadius:6,marginBottom:10,color:'#7A5A0A',lineHeight:1.6}},
+      '⚠️ แก้ไข Default → อัปเดตเฉพาะ Compartment ที่ยังไม่มีป้าย ',h('span',{style:{background:'#378ADD',color:'#fff',borderRadius:2,padding:'0 3px',fontSize:11}},'จริง'),' เท่านั้น'
+    ),
+    /* add form */
+    showAdd&&h('div',{style:{border:'0.5px solid var(--color-border-secondary)',borderRadius:8,padding:12,marginBottom:12}},
+      h('div',{style:{fontSize:13,fontWeight:500,marginBottom:10}},'เพิ่ม Compartment ใหม่'),
+      h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}},
+        h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'ประเภท'),h(TypeSelect,{value:nm.type,onChange:t=>sNm({...nm,type:t}),mt,setMt})),
+        h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'ประเภทอุปกรณ์'),h('select',{value:nm.zone,onChange:e=>sNm({...nm,zone:e.target.value,mfr:'',model:''})},eqTypes.map(z=>h('option',{key:z,value:z},z)))),
+        h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'แรงดัน'),h('select',{value:nm.kv,onChange:e=>sNm({...nm,kv:+e.target.value,mfr:'',model:''})},KVO.map(v=>h('option',{key:v,value:v},v,' kV')))),
+        h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'SF6 Default (kg)'),h('input',{type:'number',step:'0.01',value:nm.sf6,onChange:e=>sNm({...nm,sf6:e.target.value}),placeholder:'3.20'})),
+        h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'ยี่ห้อ'),
+          h(SmartSelect,{options:dbMfrs(eqDB,nm.zone,nm.kv),value:nm.mfr,placeholder:'ยี่ห้อใหม่ เช่น Siemens',
+            onChange:v=>sNm({...nm,mfr:v,model:''}),
+            onAddNew:v=>setEqDB(dbAddMfr(eqDB,nm.zone,nm.kv,v))
+          })
+        ),
+        h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'รุ่น'),
+          h(SmartSelect,{options:dbModels(eqDB,nm.zone,nm.kv,nm.mfr),value:nm.model,disabled:!nm.mfr,placeholder:'รุ่นใหม่ เช่น 8DN8',
+            onChange:v=>sNm({...nm,model:v}),
+            onAddNew:v=>setEqDB(dbAddModel(eqDB,nm.zone,nm.kv,nm.mfr,v))
+          })
+        )
+      ),
+      h('div',{style:{display:'flex',gap:7,marginTop:10}},
+        h('button',{style:sBP,onClick:()=>{if(!nm.mfr||!nm.model||!nm.sf6)return;setLib(p=>[...p,{id:nid(),...nm,kv:+nm.kv,sf6:+nm.sf6,createdBy:savedByName}]);sNm({type:'CB',mfr:'',model:'',kv:115,sf6:'',zone:'HV GIS'});sShowAdd(false);}},'บันทึก'),
+        h('button',{style:sB,onClick:()=>sShowAdd(false)},'ยกเลิก')
+      )
+    ),
+    /* brand list — collapsed by default */
+    mfrs.length===0?h('div',{style:{padding:'20px',textAlign:'center',fontSize:13,color:'var(--color-text-secondary)'}},'ไม่พบข้อมูล')
+    :mfrs.map(mfr=>{
+      const mgs=Object.values(gr[mfr]);const totC=mgs.reduce((s,g)=>s+g.modules.length,0);
+      const brandExp=expBrand[mfr]===true;
+      return h('div',{key:mfr,style:{marginBottom:6,border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,overflow:'hidden'}},
+        /* brand header */
+        h('div',{style:{display:'flex',alignItems:'center',padding:'9px 12px',cursor:'pointer',background:'var(--color-background-secondary)',userSelect:'none'},
+          onClick:()=>sExpBrand(p=>({...p,[mfr]:!brandExp}))},
+          h('span',{style:{fontSize:12,marginRight:7,color:'var(--color-text-secondary)',width:14,textAlign:'center'}},brandExp?'▼':'▶'),
+          h('span',{style:{fontWeight:500,fontSize:13,flex:1}},mfr),
+          h('span',{style:{fontSize:12,color:'var(--color-text-secondary)',marginRight:8}},mgs.length,' รุ่น'),
+          h('span',{style:{fontSize:12,color:'var(--color-text-secondary)'}},totC,' compartments')
+        ),
+        /* model list */
+        brandExp&&mgs.map(({model,kv,zone,modules},gi)=>{
+          const mdlKey=`${mfr}__${model}__${kv}`;const mdlExp=expModel[mdlKey]===true;
+          return h('div',{key:gi,style:{borderTop:'0.5px solid var(--color-border-tertiary)'}},
+            /* model header */
+            h('div',{style:{display:'flex',alignItems:'center',padding:'7px 12px 7px 28px',cursor:'pointer',background:'rgba(0,0,0,0.015)',userSelect:'none'},
+              onClick:()=>sExpModel(p=>({...p,[mdlKey]:!mdlExp}))},
+              h('span',{style:{fontSize:11,marginRight:6,color:'var(--color-text-secondary)',width:12,textAlign:'center'}},mdlExp?'▼':'▶'),
+              h('span',{style:{fontSize:12,fontWeight:500,flex:1}},model),
+              h(Tag,null,kv+'kV'),h('span',{style:{width:6}}),h(Tag,null,zone),
+              h('span',{style:{fontSize:11,color:'var(--color-text-secondary)',marginLeft:8}},modules.length,' compartments')
+            ),
+            /* compartments */
+            mdlExp&&modules.map(m=>{const isEd2=eId===m.id;const ne=isEd2?cNE(m):0;const ed=isEd2?cE(m):0;
+              return h('div',{key:m.id,style:{borderTop:'0.5px solid var(--color-border-tertiary)'}},
+                isEd2?h('div',{style:{padding:'10px 12px 10px 38px',background:'rgba(55,138,221,0.04)'}},
+                  h('div',{style:{fontSize:13,fontWeight:500,color:'#185FA5',marginBottom:8}},'แก้ไข Compartment'),
+                  h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:7}},
+                    h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'ประเภท'),h(TypeSelect,{value:eF.type,onChange:t=>sEF({...eF,type:t}),mt,setMt})),
+                    h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'SF6 Default (kg)'),h('input',{type:'number',step:'0.01',value:eF.sf6,onChange:e=>sEF({...eF,sf6:+e.target.value}),autoFocus:true})),
+                    h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'แรงดัน'),h('select',{value:eF.kv,onChange:e=>sEF({...eF,kv:+e.target.value,mfr:'',model:''})},KVO.map(v=>h('option',{key:v,value:v},v,' kV')))),
+                    h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'ประเภทอุปกรณ์'),h('select',{value:eF.zone,onChange:e=>sEF({...eF,zone:e.target.value,mfr:'',model:''})},eqTypes.map(z=>h('option',{key:z,value:z},z)))),
+                    h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'ยี่ห้อ'),
+                      h(SmartSelect,{options:dbMfrs(eqDB,eF.zone,eF.kv),value:eF.mfr,placeholder:'ยี่ห้อใหม่',
+                        onChange:v=>sEF({...eF,mfr:v,model:''}),
+                        onAddNew:v=>setEqDB(dbAddMfr(eqDB,eF.zone,eF.kv,v))})
+                    ),
+                    h('div',null,h('label',{style:{fontSize:12,color:'var(--color-text-secondary)',display:'block',marginBottom:3}},'รุ่น'),
+                      h(SmartSelect,{options:dbModels(eqDB,eF.zone,eF.kv,eF.mfr),value:eF.model,disabled:!eF.mfr,placeholder:'รุ่นใหม่',
+                        onChange:v=>sEF({...eF,model:v}),
+                        onAddNew:v=>setEqDB(dbAddModel(eqDB,eF.zone,eF.kv,eF.mfr,v))})
+                    )
+                  ),
+                  ne>0&&h('div',{style:{fontSize:12,padding:'5px 8px',borderRadius:4,marginBottom:6,background:'rgba(186,117,23,0.08)',color:'#7A5A0A'}},`จะอัปเดต ${ne} Compartment (Default) ใน Bay`),
+                  ed>0&&h('div',{style:{fontSize:12,padding:'5px 8px',borderRadius:4,marginBottom:6,background:'rgba(55,138,221,0.07)',color:'#185FA5'}},`🔒 ${ed} Compartment มีป้าย "จริง" → ไม่ถูกแก้ไข`),
+                  h('div',{style:{display:'flex',gap:7}},h('button',{style:{...sBP,flex:1},onClick:()=>{updateMod(eId,eF);sEId(null);}},'บันทึก'),h('button',{style:{...sB,flex:1},onClick:()=>sEId(null)},'ยกเลิก'))
+                )
+                :h('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'6px 12px 6px 38px',fontSize:12}},
+                  h('div',{style:{width:9,height:9,borderRadius:'50%',background:TC[m.type]||'#888',flexShrink:0}}),
+                  h('span',{style:{fontWeight:500,flex:1}},m.type),
+                  h('span',{style:{fontFamily:'var(--font-mono)',minWidth:56,textAlign:'right',color:'var(--color-text-secondary)'}},m.sf6.toFixed(2),' kg'),
+                  h('span',{style:{fontSize:11,color:'var(--color-text-secondary)'}},'(Default)'),
+                  h('button',{style:{...iB,color:'#185FA5',borderColor:'rgba(24,95,165,0.3)'},onClick:()=>{sEId(m.id);sEF({type:m.type,mfr:m.mfr,model:m.model,kv:m.kv,sf6:m.sf6,zone:m.zone});}},'แก้ไข'),
+                  h('button',{style:iBD,onClick:()=>askDelete(m,`ลบ "${m.type}" (${mfr} ${model})?`,()=>setLib(p=>p.filter(x=>x.id!==m.id)))},'ลบ')
+                )
+              );
+            })
+          );
+        })
+      );
+    })
+  );
+}
+
+/* ── Templates Tab ── */
+function TemplatesTab({eqTpls,subTpls,askConfirm,onDelEq,onDelSub}){
+  const eqCard=t=>{const bC=t.bays?t.bays.length:0;const mC=t.bays?t.bays.reduce((s,b)=>s+b.modules.length,0):0;const sp=!!t.singlePhase;const sf=t.bays?t.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modTotal(m,sp),0),0):0;
+    return h('div',{key:t.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 13px',border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,marginBottom:7}},
+      h('div',null,
+        h('div',{style:{fontWeight:500,fontSize:13,marginBottom:4}},t.name),
+        h('div',{style:{display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}},h(Tag,null,t.kv+'kV'),h(Tag,null,t.mfr||''),h(Tag,null,t.model||''),h('span',{style:{fontSize:12,color:'var(--color-text-secondary)'}},bC,' bays · ',mC,' compartments · ',sf.toFixed(1),' kg SF6'))
+      ),
+      h('button',{style:{...sBD},onClick:()=>askConfirm(`ลบ "${t.name}"?`,()=>onDelEq(t.id))},'ลบ')
+    );};
+  const subCard=t=>{const eqC=t.equipment?t.equipment.length:0;const bC=t.equipment?t.equipment.reduce((s,e)=>s+(e.bays?e.bays.length:0),0):0;const sf=t.equipment?t.equipment.reduce((s,e)=>{const sp=!!e.singlePhase;return s+(e.bays?e.bays.reduce((ss,b)=>ss+b.modules.reduce((sss,m)=>sss+modTotal(m,sp),0),0):0);}):0;
+    return h('div',{key:t.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 13px',border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,marginBottom:7}},
+      h('div',null,h('div',{style:{fontWeight:500,fontSize:13,marginBottom:4}},t.name),h('span',{style:{fontSize:12,color:'var(--color-text-secondary)'}},eqC,' อุปกรณ์ · ',bC,' bays รวม · ',sf.toFixed(1),' kg SF6')),
+      h('button',{style:{...sBD},onClick:()=>askConfirm(`ลบ "${t.name}"?`,()=>onDelSub(t.id))},'ลบ')
+    );};
+  return h('div',null,
+    h('div',{style:{marginBottom:18}},
+      h('div',{style:{fontWeight:500,fontSize:14,marginBottom:10,paddingBottom:7,borderBottom:'0.5px solid var(--color-border-tertiary)',display:'flex',gap:7,alignItems:'center'}},
+        '⚡ รูปแบบอุปกรณ์',h('span',{style:{background:'var(--color-background-secondary)',borderRadius:10,padding:'1px 8px',fontSize:12}},eqTpls.length)
+      ),
+      eqTpls.length===0?h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',padding:'16px',border:'1px dashed var(--color-border-secondary)',borderRadius:6,textAlign:'center'}},'ยังไม่มี — กดปุ่ม "บันทึก รูปแบบอุปกรณ์" ในแถบ Bay Configuration'):eqTpls.map(eqCard)
+    ),
+    h('div',null,
+      h('div',{style:{fontWeight:500,fontSize:14,marginBottom:10,paddingBottom:7,borderBottom:'0.5px solid var(--color-border-tertiary)',display:'flex',gap:7,alignItems:'center'}},
+        '🏭 รูปแบบสถานี',h('span',{style:{background:'var(--color-background-secondary)',borderRadius:10,padding:'1px 8px',fontSize:12}},subTpls.length)
+      ),
+      subTpls.length===0?h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',padding:'16px',border:'1px dashed var(--color-border-secondary)',borderRadius:6,textAlign:'center'}},'ยังไม่มี — กดปุ่ม "บันทึก รูปแบบสถานี" ข้างชื่อสถานี'):subTpls.map(subCard)
+    )
+  );
+}
+
+/* ── Summary ── */
+function SummaryView({subs}){
+  const grand=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+b.modules.reduce((ssss,m)=>ssss+modTotal(m,sp),0),0);},0),0);
+  const gM=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+b.modules.reduce((ssss,m)=>ssss+modPoints(m,sp),0),0);},0),0);
+  const gE=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+b.modules.reduce((ssss,m)=>ssss+modEdited(m,sp),0),0);},0),0);
+  return h('div',null,
+    h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}},
+      [{l:'SF6 รวม',v:grand.toFixed(2)+' kg'},{l:'จำนวนสถานี',v:subs.length+' สถานี'},{l:'จริง/ประมาณการ',v:`${gE} / ${gM-gE}`}].map(({l,v})=>h('div',{key:l,style:{background:'var(--color-background-secondary)',borderRadius:8,padding:'10px 12px',textAlign:'center'}},h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:4}},l),h('div',{style:{fontSize:17,fontWeight:500,fontFamily:'var(--font-mono)'}},v)))
+    ),
+    subs.map(su=>{const subTot=su.equipment.reduce((s,e)=>{const sp=!!e.singlePhase;return s+e.bays.reduce((ss,b)=>ss+b.modules.reduce((sss,m)=>sss+modTotal(m,sp),0),0);},0);
+      return h('div',{key:su.id,style:{marginBottom:16}},
+        h('div',{style:{fontWeight:500,fontSize:14,marginBottom:9,display:'flex',justifyContent:'space-between',paddingBottom:7,borderBottom:'0.5px solid var(--color-border-tertiary)'}},h('span',null,su.name),h('span',{style:{fontFamily:'var(--font-mono)',fontSize:13,color:'var(--color-text-secondary)',fontWeight:400}},subTot.toFixed(2),' kg')),
+        h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:9}},
+          su.equipment.map(e=>{const sp=!!e.singlePhase;const eTot=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modTotal(m,sp),0),0);const eMods=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modPoints(m,sp),0),0);const eEd=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modEdited(m,sp),0),0);
+            return h('div',{key:e.id,style:{border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,padding:'11px 13px'}},
+              h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:7}},h('div',null,h('div',{style:{fontWeight:500,fontSize:13}},e.name),h('div',{style:{fontSize:12,color:'var(--color-text-secondary)'}},e.mfr,' ',e.model)),h(Tag,null,e.kv+'kV')),
+              h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,marginBottom:7}},
+                [['Bays',e.bays.length],['SF6',eTot.toFixed(1)+' kg'],['จริง',`${eEd}/${eMods}`]].map(([l,v])=>h('div',{key:l,style:{textAlign:'center',padding:'5px',background:'var(--color-background-secondary)',borderRadius:4}},h('div',{style:{fontSize:13,fontWeight:500,fontFamily:'var(--font-mono)'}},v),h('div',{style:{fontSize:11,color:'var(--color-text-secondary)'}},l)))
+              ),
+              e.bays.map(b=>{const bT=b.modules.reduce((s,m)=>s+modTotal(m,sp),0);const bEd=b.modules.reduce((s,m)=>s+modEdited(m,sp),0);const bTotN=b.modules.reduce((s,m)=>s+modPoints(m,sp),0);
+                return h('div',{key:b.id,style:{display:'flex',justifyContent:'space-between',padding:'3px 0',borderTop:'0.5px solid var(--color-border-tertiary)',fontSize:12}},
+                  h('span',null,b.name),h('div',{style:{display:'flex',gap:6,alignItems:'center'}},
+                    bEd>0&&h('span',{style:{fontSize:11,color:bEd===bTotN?'#378ADD':'#BA7517'}},`${bEd}/${bTotN}จริง`),
+                    h('span',{style:{fontFamily:'var(--font-mono)',color:'var(--color-text-secondary)'}},bT.toFixed(2),' kg')
+                  )
+                );
+              })
+            );
+          })
+        )
+      );
+    })
+  );
+}
+
+/* ── Sidebar ── */
+function Sidebar({subs,selSub,selEq,setSelSub,setSelEq,setSelBay,addSub,delSub,updateSub,addEq,delEq,updateEq,moveEq,askConfirm,askDelete,eqTpls,subTpls,onSaveSubTpl,width,eqTypes,setEqTypes,eqDB,setEqDB,savedByName}){
+  const [showNS,sShowNS]=useState(false);const [nsNm,sNsNm]=useState('');const [nsErr,sNsErr]=useState('');const [nsTpl,sNsTpl]=useState('');
+  const [edSubId,sEdSubId]=useState(null);const [edSubNm,sEdSubNm]=useState('');const [edSubErr,sEdSubErr]=useState('');
+  const [showNE,sShowNE]=useState(null);const [neF,sNeF]=useState({name:'HV GIS',custom:'',kv:'69',mfr:'',model:'',eqTpl:'',sp:false});
+  const [showAddEqType,sShowAddEqType]=useState(false);const [newEqTypeName,sNewEqTypeName]=useState('');
+  const [edEqId,sEdEqId]=useState(null);const [edEqF,sEdEqF]=useState({});
+  const noUser=!savedByName||savedByName.length!==7||!/^\d{7}$/.test(savedByName);
+  const noUserMsg=h('div',{style:{fontSize:11,color:'#E24B4A',padding:'4px 6px',background:'rgba(226,75,74,0.07)',borderRadius:4,marginBottom:4}},'⚠️ กรุณากรอกรหัสพนักงาน 7 หลัก (ตัวเลขเท่านั้น)');
+  function doAddSub(){
+    if(noUser){sNsErr('กรุณากรอกรหัสพนักงานก่อน');return;}
+    const nm=nsNm.trim();if(!nm){sNsErr('กรุณากรอกชื่อ');return;}if(subs.some(s=>s.name.toLowerCase()===nm.toLowerCase())){sNsErr('ชื่อสถานีซ้ำ!');return;}const tpl=subTpls.find(t=>t.id===+nsTpl);addSub(tpl?cpSub(tpl,nm):{id:nid(),name:nm,equipment:[]});sNsNm('');sNsErr('');sNsTpl('');sShowNS(false);
+  }
+  function doUpSub(){const nm=edSubNm.trim();if(!nm){sEdSubErr('กรุณากรอก');return;}if(subs.some(s=>s.id!==edSubId&&s.name.toLowerCase()===nm.toLowerCase())){sEdSubErr('ชื่อซ้ำ');return;}updateSub(edSubId,{name:nm});sEdSubId(null);sEdSubErr('');}
+  function doAddEq(sid){
+    if(noUser)return;
+    const eTpl=eqTpls.find(t=>t.id===+neF.eqTpl);
+    if(eTpl){addEq(sid,{...cpEq(eTpl),id:nid()});sNeF({name:'HV GIS',custom:'',kv:'69',mfr:'',model:'',eqTpl:'',sp:false});sShowNE(null);return;}
+    const nm=neF.name==='อื่นๆ'?neF.custom:neF.name;if(!nm)return;
+    const zone=neF.name==='อื่นๆ'?neF.custom:neF.name;
+    if(neF.name==='อื่นๆ'&&neF.custom&&!eqTypes.includes(neF.custom)){setEqTypes(p=>[...p,neF.custom]);}
+    addEq(sid,{name:nm,kv:+neF.kv,mfr:neF.mfr,model:neF.model,zone,singlePhase:neF.sp,templates:[],bays:[]});
+    sNeF({name:'HV GIS',custom:'',kv:'69',mfr:'',model:'',eqTpl:'',sp:false});sShowNE(null);
+  }
+  function doSaveEq(sid){const{moveTo,...data}=edEqF;const toSid=+moveTo;if(toSid&&toSid!==sid)moveEq(sid,edEqId,toSid);else updateEq(sid,edEqId,{...data,kv:+data.kv});sEdEqId(null);}
+  return h('div',{style:{width:width||280,flexShrink:0,paddingRight:10,maxHeight:700,overflowY:'auto'}},
+    h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:7}},'สถานีไฟฟ้า'),
+    subs.map(s=>h('div',{key:s.id,style:{marginBottom:5}},
+      edSubId===s.id?h('div',{style:{marginBottom:5}},
+        h('div',{style:{display:'flex',gap:3}},
+          h('input',{value:edSubNm,onChange:e=>sEdSubNm(e.target.value),autoFocus:true,onKeyDown:e=>{if(e.key==='Enter')doUpSub();if(e.key==='Escape')sEdSubId(null);}}),
+          h('button',{style:{...sBP,padding:'3px 7px',flexShrink:0},onClick:doUpSub},'✓'),
+          h('button',{style:{...sB,padding:'3px 7px',flexShrink:0},onClick:()=>{sEdSubId(null);sEdSubErr('');}},h('span',null,'✕'))
+        ),
+        edSubErr&&h('div',{style:{fontSize:11,color:'#E24B4A',marginTop:2}},edSubErr)
+      ):h('div',{style:{display:'flex',alignItems:'center',padding:'5px 6px',borderRadius:5,cursor:'pointer',background:s.id===selSub?'var(--color-background-secondary)':'transparent'},onClick:()=>{setSelSub(s.id);setSelEq(s.equipment[0]?s.equipment[0].id:null);setSelBay(null);}},
+        h('span',{style:{fontSize:13,color:'var(--color-text-secondary)',marginRight:5,flexShrink:0}},'🏭'),
+        h('span',{style:{flex:1,fontSize:13,fontWeight:s.id===selSub?500:400,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},s.name),
+        h('button',{style:{...iBG,padding:'1px 5px',marginLeft:2},title:'บันทึก รูปแบบสถานี',onClick:e=>{e.stopPropagation();onSaveSubTpl(s);}},'บันทึก'),
+        h('button',{style:{...iB,padding:'1px 5px'},onClick:e=>{e.stopPropagation();sEdSubId(s.id);sEdSubNm(s.name);}},'แก้ไข'),
+        h('button',{style:{...iBD,padding:'1px 5px'},onClick:e=>{e.stopPropagation();askDelete(s,`ลบสถานี "${s.name}"?`,()=>delSub(s.id));}},'ลบ')
+      ),
+      s.id===selSub&&h('div',{style:{paddingLeft:16,marginTop:3}},
+        s.equipment.map(e=>h('div',{key:e.id},
+          edEqId===e.id?h('div',{style:{marginBottom:6,border:'0.5px solid rgba(55,138,221,0.4)',borderRadius:6,padding:8}},
+            h('div',{style:{fontSize:12,fontWeight:500,marginBottom:6,color:'#185FA5'}},'แก้ไขอุปกรณ์'),
+            [['ชื่อ','name'],['ยี่ห้อ','mfr'],['รุ่น','model']].map(([l,k])=>h('div',{key:k},h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},l),h('input',{value:edEqF[k]||'',onChange:ev=>sEdEqF({...edEqF,[k]:ev.target.value}),style:{marginBottom:5}}))),
+            h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'แรงดัน'),h('select',{value:edEqF.kv||'',onChange:ev=>sEdEqF({...edEqF,kv:ev.target.value}),style:{marginBottom:5}},KVO.map(v=>h('option',{key:v,value:v},v,' kV'))),
+            subs.filter(x=>x.id!==s.id).length>0&&h('div',null,h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'ย้ายไปสถานี'),h('select',{value:edEqF.moveTo||'',onChange:ev=>sEdEqF({...edEqF,moveTo:ev.target.value}),style:{marginBottom:6}},h('option',{value:''},'— ไม่ย้าย —'),subs.filter(x=>x.id!==s.id).map(x=>h('option',{key:x.id,value:x.id},x.name)))),
+            h('div',{style:{display:'flex',gap:4}},h('button',{style:{...sBP,flex:1,padding:'4px',fontSize:12},onClick:()=>doSaveEq(s.id)},edEqF.moveTo?'ย้าย':'บันทึก'),h('button',{style:{...sB,flex:1,padding:'4px'},onClick:()=>sEdEqId(null)},'ยกเลิก'))
+          ):h('div',{style:{display:'flex',alignItems:'center',padding:'4px 6px',borderRadius:4,cursor:'pointer',background:e.id===selEq?'rgba(55,138,221,0.1)':'transparent',marginBottom:3},onClick:()=>{setSelEq(e.id);setSelBay(null);}},
+            h('span',{style:{fontSize:12,color:e.id===selEq?'#185FA5':'var(--color-text-secondary)',marginRight:4,flexShrink:0}},'⚡'),
+            h('div',{style:{flex:1,minWidth:0}},h('div',{style:{fontSize:12,fontWeight:e.id===selEq?500:400,color:e.id===selEq?'#185FA5':'var(--color-text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},e.name),h('div',{style:{fontSize:11,color:'var(--color-text-secondary)'}},e.kv,'kV · ',e.mfr)),
+            h('button',{style:{...iB,padding:'1px 5px',marginLeft:3},onClick:ev=>{ev.stopPropagation();sEdEqId(e.id);sEdEqF({name:e.name,kv:String(e.kv),mfr:e.mfr||'',model:e.model||'',moveTo:''});}},'แก้ไข'),
+            h('button',{style:{...iBD,padding:'1px 5px'},onClick:ev=>{ev.stopPropagation();askDelete(e,`ลบอุปกรณ์ "${e.name}"?`,()=>{delEq(s.id,e.id);if(selEq===e.id)setSelEq(null);});}},'ลบ')
+          )
+        )),
+        showNE===s.id?h('div',{style:{marginTop:6,border:'0.5px solid var(--color-border-secondary)',borderRadius:6,padding:8}},
+          h('div',{style:{fontSize:12,fontWeight:500,marginBottom:6,color:'var(--color-text-secondary)'}},'เพิ่มอุปกรณ์'),
+          eqTpls.length>0&&h('div',null,
+            h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'จาก รูปแบบอุปกรณ์'),
+            h('select',{value:neF.eqTpl,onChange:e=>sNeF({...neF,eqTpl:e.target.value}),style:{marginBottom:6}},
+              h('option',{value:''},'— สร้างใหม่ —'),eqTpls.map(t=>h('option',{key:t.id,value:t.id},t.name,' (',t.kv,'kV)'))
+            )
+          ),
+          !neF.eqTpl&&h(React.Fragment,null,
+            h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'ประเภทอุปกรณ์'),
+            h('select',{value:neF.name,onChange:e=>sNeF({...neF,name:e.target.value,custom:'',mfr:'',model:''}),style:{marginBottom:5}},
+              [...eqTypes,'อื่นๆ'].map(t=>h('option',{key:t,value:t},t))
+            ),
+            neF.name==='อื่นๆ'&&h('input',{value:neF.custom,onChange:e=>sNeF({...neF,custom:e.target.value}),placeholder:'ระบุประเภทใหม่ เช่น HV GCB',style:{marginBottom:5}}),
+            h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'แรงดัน'),
+            h('select',{value:neF.kv,onChange:e=>sNeF({...neF,kv:e.target.value,mfr:'',model:''}),style:{marginBottom:5}},KVO.map(v=>h('option',{key:v,value:v},v,' kV'))),
+            h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'ยี่ห้อ'),
+            h(SmartSelect,{
+              options:dbMfrs(eqDB,neF.name==='อื่นๆ'?neF.custom:neF.name,+neF.kv),
+              value:neF.mfr,placeholder:'ยี่ห้อใหม่',
+              onChange:v=>sNeF({...neF,mfr:v,model:''}),
+              onAddNew:v=>{const z=neF.name==='อื่นๆ'?neF.custom:neF.name;if(z)setEqDB(dbAddMfr(eqDB,z,+neF.kv,v));}
+            }),
+            h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2,marginTop:5}},'รุ่น'),
+            h(SmartSelect,{
+              options:dbModels(eqDB,neF.name==='อื่นๆ'?neF.custom:neF.name,+neF.kv,neF.mfr),
+              value:neF.model,disabled:!neF.mfr,placeholder:'รุ่นใหม่ เช่น 8DN8',
+              onChange:v=>sNeF({...neF,model:v}),
+              onAddNew:v=>{const z=neF.name==='อื่นๆ'?neF.custom:neF.name;if(z&&neF.mfr)setEqDB(dbAddModel(eqDB,z,+neF.kv,neF.mfr,v));}
+            }),
+            h('div',{style:{height:5}})
+          ),
+          !neF.eqTpl&&h('label',{style:{display:'flex',alignItems:'center',gap:6,fontSize:12,cursor:'pointer',padding:'6px 0',borderTop:'0.5px solid var(--color-border-tertiary)',marginTop:3}},
+            h('input',{type:'checkbox',checked:!!neF.sp,onChange:e=>sNeF({...neF,sp:e.target.checked}),style:{width:14,height:14,cursor:'pointer'}}),
+            h('span',null,'Single Phase Enclosure (บันทึก SF6 แยก R, Y, B)'),
+            neF.sp&&h('span',{style:{fontSize:11,color:'#993556',marginLeft:3}},'⚠️ แต่ละ Compartment จะมี 3 ค่า')
+          ),
+          h('div',{style:{display:'flex',gap:4,marginTop:3}},
+            h('button',{style:{...sBP,flex:1,padding:'4px',fontSize:12},onClick:()=>doAddEq(s.id)},neF.eqTpl?'ใช้ รูปแบบนี้':'เพิ่ม'),
+            h('button',{style:{...sB,flex:1,padding:'4px'},onClick:()=>sShowNE(null)},'ยกเลิก')
+          )
+        ):h('button',{style:{...sB,width:'100%',marginTop:5,padding:'4px',borderStyle:'dashed',fontSize:12},
+            onClick:()=>{if(noUser)return;sShowNE(s.id);},
+            disabled:noUser,title:noUser?'กรุณากรอกรหัสพนักงานก่อน':undefined
+          },'+ เพิ่มอุปกรณ์')
+      )
+    )),
+    showNS?h('div',{style:{marginTop:10,border:'0.5px solid var(--color-border-secondary)',borderRadius:6,padding:8}},
+      h('div',{style:{fontSize:12,fontWeight:500,marginBottom:6}},'สถานีใหม่'),
+      noUser&&noUserMsg,
+      subTpls.length>0&&h('div',null,
+        h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'จาก รูปแบบสถานี'),
+        h('select',{value:nsTpl,onChange:e=>sNsTpl(e.target.value),style:{marginBottom:6}},h('option',{value:''},'— เริ่มว่าง —'),subTpls.map(t=>h('option',{key:t.id,value:t.id},t.name)))
+      ),
+      h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:2}},'ชื่อสถานี'),
+      h('input',{value:nsNm,onChange:e=>{sNsNm(e.target.value);sNsErr('');},placeholder:'ชื่อสถานี',style:{marginBottom:nsErr?4:7},onKeyDown:e=>e.key==='Enter'&&doAddSub()}),
+      nsErr&&h('div',{style:{fontSize:11,color:'#E24B4A',marginBottom:5}},nsErr),
+      h('div',{style:{display:'flex',gap:4}},
+        h('button',{style:{...sBP,flex:1,padding:'4px'},onClick:doAddSub,disabled:noUser},nsTpl?'สร้างจาก รูปแบบ':'เพิ่ม'),
+        h('button',{style:{...sB,flex:1,padding:'4px'},onClick:()=>{sShowNS(false);sNsErr('');}},  'ยกเลิก')
+      )
+    ):h('button',{style:{...sB,width:'100%',marginTop:12,padding:'5px',borderStyle:'dashed',fontSize:12,opacity:noUser?0.45:1,cursor:noUser?'not-allowed':'pointer'},
+        onClick:()=>sShowNS(true),title:noUser?'กรุณากรอกรหัสพนักงานก่อน':undefined
+      },'+ สถานีใหม่')
+  );
+}
+
+/* ── ProtectedConfirmDlg: ต้องใส่รหัสเพื่อยืนยันลบข้อมูลของผู้อื่น ── */
+const ADMIN_CODE='2235636';
+function ProtectedConfirmDlg({msg,createdBy,onYes,onNo}){
+  const [code,sCode]=useState('');const [err,sErr]=useState('');
+  function tryConfirm(){
+    if(code===ADMIN_CODE){onYes();}
+    else{sErr('รหัสไม่ถูกต้อง');sCode('');}
+  }
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:350,display:'flex',alignItems:'center',justifyContent:'center'}},
+    h('div',{style:{background:'var(--color-background-primary)',border:'0.5px solid var(--color-border-secondary)',borderRadius:10,padding:'20px 22px',maxWidth:300,width:'90%',boxShadow:'0 8px 32px rgba(0,0,0,0.2)'}},
+      h('div',{style:{fontSize:13,marginBottom:8,lineHeight:1.6}},msg),
+      h('div',{style:{fontSize:12,padding:'6px 9px',background:'rgba(226,75,74,0.07)',borderRadius:6,marginBottom:12,color:'#993333'}},
+        '⚠️ ข้อมูลนี้สร้างโดย: ',h('strong',null,createdBy||'ไม่ระบุ'),h('br'),
+        'กรอกรหัสผู้ดูแลเพื่อยืนยันการลบ'
+      ),
+      h('input',{value:code,onChange:e=>{sCode(e.target.value);sErr('');},
+        placeholder:'รหัสผู้ดูแล',type:'password',
+        onKeyDown:e=>{if(e.key==='Enter')tryConfirm();if(e.key==='Escape')onNo();},
+        autoFocus:true,style:{marginBottom:err?4:10}}),
+      err&&h('div',{style:{fontSize:11,color:'#E24B4A',marginBottom:8}},err),
+      h('div',{style:{display:'flex',gap:8}},
+        h('button',{style:{...sBP,flex:1,background:'#E24B4A',borderColor:'#E24B4A'},onClick:tryConfirm},'ยืนยันลบ'),
+        h('button',{style:{...sB,flex:1},onClick:onNo},'ยกเลิก')
+      )
+    )
+  );
+}
+
+/* ── SettingsModal ── */
+function SettingsModal({url,onSave,onClose}){
+  const [v,sV]=useState(url||'');
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center'}},
+    h('div',{style:{background:'var(--color-background-primary)',border:'0.5px solid var(--color-border-secondary)',borderRadius:12,padding:'22px 24px',width:480,maxWidth:'94vw',boxShadow:'0 12px 40px rgba(0,0,0,0.2)'}},
+      h('div',{style:{fontWeight:600,fontSize:15,marginBottom:6}},'⚙️ ตั้งค่า Google Sheets'),
+      h('div',{style:{fontSize:13,color:'var(--color-text-secondary)',marginBottom:16,lineHeight:1.7}},
+        'วาง URL จาก Google Apps Script ด้านล่าง'
+      ),
+      /* Step guide */
+      h('div',{style:{background:'var(--color-background-secondary)',borderRadius:8,padding:'12px 14px',marginBottom:16,fontSize:12,lineHeight:2,color:'var(--color-text-secondary)'}},
+        h('div',{style:{fontWeight:600,color:'var(--color-text-primary)',marginBottom:4,fontSize:13}},'วิธีติดตั้ง (ทำครั้งเดียว):'),
+        h('div',null,'1. เปิด Google Sheets ใหม่ → Extensions → Apps Script'),
+        h('div',null,'2. วาง code จากไฟล์ ',h('code',{style:{background:'rgba(0,0,0,0.07)',padding:'1px 5px',borderRadius:3}},'sf6_apps_script.gs'),' → บันทึก'),
+        h('div',null,'3. Deploy → New deployment → Web app'),
+        h('div',{style:{paddingLeft:16}},
+          h('div',null,'• Execute as: ',h('strong',null,'Me')),
+          h('div',null,'• Who has access: ',h('strong',null,'Anyone'))
+        ),
+        h('div',null,'4. กด Deploy → Copy URL → วางด้านล่างนี้')
+      ),
+      h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:4}},'Apps Script Web App URL'),
+      h('input',{value:v,onChange:e=>sV(e.target.value),
+        placeholder:'https://script.google.com/macros/s/XXXXXXXXXX/exec',
+        style:{marginBottom:14,fontSize:12}}),
+      h('div',{style:{display:'flex',gap:8}},
+        h('button',{style:{...sBP,flex:1,padding:'7px'},onClick:()=>onSave(v.trim())},'บันทึก URL'),
+        h('button',{style:{...sB,flex:1,padding:'7px'},onClick:onClose},'ยกเลิก')
+      )
+    )
+  );
+}
+
+/* ── SyncBar ── */
+function SyncBar({status,lastSync,savedBy,onLoad,onSave,onSettings}){
+  const sColor={idle:'var(--color-text-secondary)',loading:'#BA7517',saving:'#185FA5',success:'#1D9E75',error:'#E24B4A'}[status]||'var(--color-text-secondary)';
+  const sText={idle:'',loading:'กำลังโหลด...',saving:'กำลังบันทึก...',success:'สำเร็จ ✓',error:'เกิดข้อผิดพลาด ✕'}[status]||'';
+  const fmtTime=d=>d?d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
+  return h('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:'var(--color-background-secondary)',border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,marginBottom:12,flexWrap:'wrap'}},
+    h('span',{style:{fontSize:12,fontWeight:500,color:'var(--color-text-secondary)',flexShrink:0}},'☁️ Google Sheets'),
+    h('button',{style:{...sBG,padding:'3px 10px',fontSize:12},onClick:onLoad,disabled:status==='loading'||status==='saving'},'📥 โหลด'),
+    h('button',{style:{...sBP,padding:'3px 10px',fontSize:12},onClick:onSave,disabled:status==='loading'||status==='saving'},'📤 บันทึก'),
+    h('div',{style:{flex:1,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}},
+      status!=='idle'&&h('span',{style:{fontSize:12,color:sColor,fontWeight:500}},sText),
+      lastSync&&h('span',{style:{fontSize:11,color:'var(--color-text-secondary)'}},
+        'บันทึกล่าสุด: ',fmtTime(lastSync),savedBy?` (${savedBy})`:'')
+    ),
+    h('button',{style:{...sB,padding:'3px 8px',fontSize:12},onClick:onSettings},'⚙️ ตั้งค่า')
+  );
+}
+
+/* ── App ── */
+function App(){
+  const [subs,setSubs]=useState(ISUBS);const [lib,setLib]=useState(ILIB);
+  const [mt,setMt]=useState(['CB','DS','Busbar','BusA','BusB','CT','VT','Cable','ES','LA','Buffer']);
+  const [eqTypes,setEqTypes]=useState(['HV GIS','MV GIS','GCB']);
+  const [eqDB,setEqDB]=useState(()=>JSON.parse(JSON.stringify(INIT_EQ_DB)));
+  const [eqTpls,setEqTpls]=useState([]);const [subTpls,setSubTpls]=useState([]);
+  const [selSub,setSelSub]=useState(null);const [selEq,setSelEq]=useState(null);const [selBay,setSelBay]=useState(null);
+  const [tab,setTab]=useState('designer');const [confirm,setConfirm]=useState(null);const [saveDlg,setSaveDlg]=useState(null);const [protectedConfirm,setProtectedConfirm]=useState(null);
+  const [sbW,setSbW]=useState(280);const dragging=React.useRef(false);const startX=React.useRef(0);const startW=React.useRef(280);
+  /* ── Sync state ── */
+  const [sheetsUrl,setSheetsUrl]=useState(()=>{try{return localStorage.getItem('sf6_sheets_url')||'';}catch(e){return '';}});
+  const [syncStatus,setSyncStatus]=useState('idle'); /* idle/loading/saving/success/error */
+  const [lastSync,setLastSync]=useState(null);
+  const [lastSavedBy,setLastSavedBy]=useState('');
+  const [showSettings,setShowSettings]=useState(false);
+  const [savedByName,setSavedByName]=useState(''); /* sessionStorage: ล้างทุกครั้งที่ปิด tab */
+  const [hasLoaded,setHasLoaded]=useState(false); /* ต้องโหลดข้อมูลก่อนจึงกรอกรหัสได้ */
+  /* ── Sync helpers ── */
+  function getStateSnapshot(){
+    return {subs,lib,mt,eqTypes,eqDB,eqTpls,subTpls,version:1,savedAt:Date.now()};
+  }
+  function restoreSnapshot(d){
+    if(d.subs)setSubs(d.subs);
+    if(d.lib)setLib(d.lib);
+    if(d.mt)setMt(d.mt);
+    if(d.eqTypes)setEqTypes(d.eqTypes);
+    if(d.eqDB)setEqDB(d.eqDB);
+    if(d.eqTpls)setEqTpls(d.eqTpls);
+    if(d.subTpls)setSubTpls(d.subTpls);
+  }
+  async function loadFromSheets(){
+    if(!sheetsUrl){setShowSettings(true);return;}
+    setSyncStatus('loading');
+    try{
+      const res=await fetch(sheetsUrl+'?t='+Date.now());
+      const json=await res.json();
+      if(json.ok&&json.data&&Object.keys(json.data).length>0){
+        restoreSnapshot(json.data);
+        setLastSync(new Date());
+        setLastSavedBy(json.savedBy||'');
+      }
+      setHasLoaded(true);
+      setSyncStatus('success');
+      setTimeout(()=>setSyncStatus('idle'),3000);
+    }catch(e){setSyncStatus('error');setTimeout(()=>setSyncStatus('idle'),4000);}
+  }
+  async function saveToSheets(){
+    if(!sheetsUrl){setShowSettings(true);return;}
+    const name=savedByName||'ไม่ระบุ';
+    setSyncStatus('saving');
+    try{
+      const body=JSON.stringify({data:getStateSnapshot(),savedBy:name,version:1});
+      /* Use text/plain to avoid CORS preflight; GAS accepts it fine */
+      const res=await fetch(sheetsUrl,{method:'POST',headers:{'Content-Type':'text/plain'},body});
+      const json=await res.json();
+      if(json.ok){
+        setLastSync(new Date());setLastSavedBy(name);
+        setSyncStatus('success');setTimeout(()=>setSyncStatus('idle'),3000);
+      }else{setSyncStatus('error');setTimeout(()=>setSyncStatus('idle'),4000);}
+    }catch(e){setSyncStatus('error');setTimeout(()=>setSyncStatus('idle'),4000);}
+  }
+  function saveSettings(url){
+    setSheetsUrl(url);
+    try{localStorage.setItem('sf6_sheets_url',url);}catch(e){}
+    setShowSettings(false);
+  }
+  React.useEffect(()=>{
+    function onMove(e){if(!dragging.current)return;const dx=e.clientX-startX.current;const nw=Math.max(160,Math.min(480,startW.current+dx));setSbW(nw);}
+    function onUp(){dragging.current=false;document.body.style.cursor='';document.body.style.userSelect='';}
+    document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+    return()=>{document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);};
+  },[]);
+  function onResizerDown(e){dragging.current=true;startX.current=e.clientX;startW.current=sbW;document.body.style.cursor='col-resize';document.body.style.userSelect='none';e.preventDefault();}
+  const sub=subs.find(s=>s.id===selSub);const eq=sub?sub.equipment.find(e=>e.id===selEq):null;
+  function askConfirm(msg,fn){setConfirm({msg,fn});}
+  /* askDelete:
+     - ผู้ลบ === ผู้สร้าง → Confirm ปกติ
+     - ผู้ลบ !== ผู้สร้าง / ไม่มี createdBy / ยังไม่ได้ใส่รหัสพนักงาน → ต้องใส่รหัส 2235636
+  */
+  function askDelete(item,msg,fn){
+    const cb=String((item&&item.createdBy)||'').trim();
+    const me=String(savedByName||'').trim();
+    if(me.length===7&&cb.length>0&&cb===me){
+      setConfirm({msg,fn});
+    } else {
+      setProtectedConfirm({msg,createdBy:cb||'ไม่ระบุ',fn});
+    }
+  }
+  function addSub(d){const s={...d,createdBy:savedByName};setSubs(p=>[...p,s]);setSelSub(s.id);setSelEq(s.equipment&&s.equipment[0]?s.equipment[0].id:null);setSelBay(null);}
+  function delSub(sid){setSubs(p=>p.filter(s=>s.id!==sid));if(selSub===sid){const r=subs.find(s=>s.id!==sid);setSelSub(r?r.id:null);setSelEq(null);setSelBay(null);}}
+  function updateSub(sid,d){setSubs(p=>uS(p,sid,x=>({...x,...d})));}
+  function addEq(sid,e){const ne={...e,id:nid(),createdBy:savedByName};setSubs(p=>uS(p,sid,x=>({...x,equipment:[...x.equipment,ne]})));setSelEq(ne.id);setSelBay(null);}
+  function delEq(sid,eid){setSubs(p=>uS(p,sid,x=>({...x,equipment:x.equipment.filter(e=>e.id!==eid)})));if(selEq===eid)setSelEq(null);}
+  function updateEq(sid,eid,d){setSubs(p=>uE(p,sid,eid,x=>({...x,...d})));}
+  function moveEq(fS,eid,tS){setSubs(p=>{const fSub=p.find(s=>s.id===fS);const mE=fSub?fSub.equipment.find(e=>e.id===eid):null;if(!mE)return p;let r=uS(p,fS,s=>({...s,equipment:s.equipment.filter(e=>e.id!==eid)}));return uS(r,tS,s=>({...s,equipment:[...s.equipment,mE]}));});setSelSub(tS);setSelEq(eid);setSelBay(null);}
+  function updateMod(mid,nd){const old=lib.find(m=>m.id===mid);if(!old)return;const{type:ot,mfr:om,model:omd}=old;setLib(p=>p.map(m=>m.id===mid?{...m,...nd}:m));setSubs(p=>p.map(su=>({...su,equipment:su.equipment.map(e=>({...e,bays:e.bays.map(b=>({...b,modules:b.modules.map(bm=>(bm.type===ot&&bm.mfr===om&&bm.model===omd&&!bm.edited)?{...bm,...nd,uid:bm.uid}:bm)}))}))})  ));}
+  function onSaveEqTpl(eq){setSaveDlg({title:'บันทึก รูปแบบอุปกรณ์',existing:eqTpls,onSave:nm=>{setEqTpls(p=>[...p,{...cpEq(eq),id:nid(),name:nm}]);setSaveDlg(null);}});}
+  function onSaveSubTpl(sub){setSaveDlg({title:'บันทึก รูปแบบสถานี',existing:subTpls,onSave:nm=>{setSubTpls(p=>[...p,{...cpSub(sub,nm),id:nid(),name:nm}]);setSaveDlg(null);}});}
+  const addBayFn=(sid,eid,b)=>setSubs(p=>uE(p,sid,eid,x=>({...x,bays:[...x.bays,{...b,createdBy:savedByName}]})));
+  const rmModFn=(sid,eid,bid,uid)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:b.modules.filter(m=>m.uid!==uid)})));
+  const addModFn=(sid,eid,bid,mod)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:[...b.modules,mod]})));
+  const edSf6Fn=(sid,eid,bid,uid,sf6)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:b.modules.map(m=>m.uid===uid?{...m,sf6,edited:true}:m)})));
+  const edSf6PhaseFn=(sid,eid,bid,uid,ph,sf6)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:b.modules.map(m=>m.uid===uid?{...m,[`sf${ph}`]:sf6,[`edited${ph}`]:true,edited:true}:m)})));
+  const saveTplFn=(sid,eid,tpl)=>setSubs(p=>uE(p,sid,eid,x=>({...x,templates:[...x.templates,tpl]})));
+  const delBayFn=(sid,eid,bid)=>setSubs(p=>uE(p,sid,eid,x=>({...x,bays:x.bays.filter(b=>b.id!==bid)})));
+  const delTplFn=(sid,eid,tid)=>setSubs(p=>uE(p,sid,eid,x=>({...x,templates:x.templates.filter(t=>t.id!==tid)})));
+  const reorderFn=(sid,eid,bs)=>setSubs(p=>uE(p,sid,eid,x=>({...x,bays:bs})));
+  const TABS=[{k:'designer',l:'Bay Configuration'},{k:'library',l:'Compartment Library'},{k:'templates',l:'Templates'},{k:'summary',l:'Summary'}];
+  /* ── Drawer: mount sidebar into #drawerContent on mobile ── */
+  React.useEffect(()=>{
+    const dc=document.getElementById('drawerContent');
+    if(!dc)return;
+    if(window.innerWidth<768){
+      ReactDOM.render(h(Sidebar,{subs,selSub,selEq,setSelSub,
+        setSelEq:eid=>{setSelEq(eid);closeDrawer();setTab('designer');},
+        setSelBay,addSub,delSub,updateSub,addEq,delEq,updateEq,moveEq,
+        askConfirm,askDelete,eqTpls,subTpls,onSaveSubTpl,
+        width:'100%',eqTypes,setEqTypes,eqDB,setEqDB,savedByName}),dc);
+    }
+  });
+
+  const sidebarProps={subs,selSub,selEq,setSelSub,setSelEq,setSelBay,addSub,delSub,updateSub,addEq,delEq,updateEq,moveEq,askConfirm,askDelete,eqTpls,subTpls,onSaveSubTpl,width:sbW,eqTypes,setEqTypes,eqDB,setEqDB,savedByName};
+
+  return h('div',{style:{display:'flex',flexDirection:'column',paddingTop:2,position:'relative',minHeight:600}},
+    confirm&&h(ConfirmDlg,{msg:confirm.msg,onYes:()=>{confirm.fn();setConfirm(null);},onNo:()=>setConfirm(null)}),
+    saveDlg&&h(SaveTplDlg,{title:saveDlg.title,existing:saveDlg.existing,onSave:saveDlg.onSave,onCancel:()=>setSaveDlg(null)}),
+    protectedConfirm&&h(ProtectedConfirmDlg,{msg:protectedConfirm.msg,createdBy:protectedConfirm.createdBy,onYes:()=>{protectedConfirm.fn();setProtectedConfirm(null);},onNo:()=>setProtectedConfirm(null)}),
+    showSettings&&h(SettingsModal,{url:sheetsUrl,onSave:saveSettings,onClose:()=>setShowSettings(false)}),
+    h(SyncBar,{status:syncStatus,lastSync,savedBy:lastSavedBy,onLoad:loadFromSheets,onSave:saveToSheets,onSettings:()=>setShowSettings(true)}),
+    /* ผู้บันทึก */
+    h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:6,fontSize:13}},
+      h('span',{style:{color:'var(--color-text-secondary)',flexShrink:0}},'ผู้บันทึก:'),
+      h('div',{style:{position:'relative',flex:1,maxWidth:300}},
+        h('input',{value:savedByName,disabled:!hasLoaded,
+          onChange:e=>{if(!hasLoaded)return;const v=e.target.value.replace(/\D/g,'').slice(0,7);setSavedByName(v);try{sessionStorage.setItem('sf6_saved_by',v);}catch(e){}},
+          placeholder:hasLoaded?'รหัสพนักงาน 7 หลัก':'กด "โหลด" ก่อนจึงกรอกได้',
+          inputMode:'numeric',pattern:'[0-9]*',maxLength:7,
+          style:{fontSize:16,paddingRight:hasLoaded?70:8,borderColor:!hasLoaded?'var(--color-border-secondary)':savedByName.length===7?'#1D9E75':savedByName.length>0?'#E24B4A':'var(--color-border-secondary)',background:!hasLoaded?'var(--color-background-secondary)':undefined,cursor:!hasLoaded?'not-allowed':undefined}}),
+        hasLoaded&&h('span',{style:{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',fontSize:12,color:savedByName.length===7?'#1D9E75':savedByName.length>0?'#E24B4A':'var(--color-text-secondary)',pointerEvents:'none',whiteSpace:'nowrap'}},
+          savedByName.length===7?'✓ พร้อมใช้':`${savedByName.length}/7`)
+      )
+    ),
+    (!hasLoaded||!savedByName||savedByName.length!==7)?h('div',{style:{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'rgba(226,75,74,0.07)',border:'0.5px solid rgba(226,75,74,0.3)',borderRadius:6,marginBottom:8,fontSize:13,color:'#993333'}},
+      !hasLoaded
+        ?h(React.Fragment,null,'⚠️ กรุณากด ',h('strong',null,'📥 โหลด'),' ก่อน')
+        :h(React.Fragment,null,'⚠️ กรุณากรอก ',h('strong',null,'รหัสพนักงาน 7 หลัก'))
+    ):null,
+    /* main layout */
+    h('div',{style:{display:'flex',gap:0,flex:1,minWidth:0}},
+      /* Sidebar: desktop only (CSS hides on mobile) */
+      h('div',{className:'sidebar-desktop',style:{width:sbW,flexShrink:0,borderRight:'0.5px solid var(--color-border-tertiary)',paddingRight:8,maxHeight:'80vh',overflowY:'auto'}},
+        h(Sidebar,sidebarProps)
+      ),
+      /* Resizer: desktop only */
+      h('div',{className:'sidebar-desktop',onMouseDown:onResizerDown,
+        style:{width:6,flexShrink:0,cursor:'col-resize',background:'transparent',position:'relative',zIndex:10,margin:'0 2px'},
+        onMouseEnter:e=>e.currentTarget.style.background='var(--color-border-secondary)',
+        onMouseLeave:e=>{if(!dragging.current)e.currentTarget.style.background='transparent';}},
+        h('div',{style:{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',fontSize:14,color:'var(--color-border-secondary)',lineHeight:1,letterSpacing:-2,userSelect:'none',pointerEvents:'none'}},'⋮⋮')
+      ),
+      /* Content */
+      h('div',{style:{flex:1,minWidth:0,paddingLeft:8}},
+        /* Tab bar */
+        h('div',{className:'tab-bar'},
+          TABS.map(({k,l})=>h('button',{key:k,className:'tab-btn',
+            style:{color:tab===k?'var(--color-text-primary)':'var(--color-text-secondary)',borderBottom:tab===k?'2px solid var(--color-text-primary)':'2px solid transparent',fontWeight:tab===k?500:400,marginBottom:-1,background:'none',border:'none',borderBottom:tab===k?'2px solid var(--color-text-primary)':'2px solid transparent',cursor:'pointer',padding:'8px 12px',fontSize:13,whiteSpace:'nowrap',minHeight:'40px',touchAction:'manipulation'},
+            onClick:()=>setTab(k)},l))
+        ),
+        tab==='designer'&&eq&&h(DesignerView,{eq,sid:selSub,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addModFn,edSf6Fn,edSf6PhaseFn,saveTplFn,delBayFn,delTplFn,reorderFn,askConfirm,askDelete,mt,setMt,onSaveEqTpl,savedByName}),
+        tab==='designer'&&!eq&&h('div',{style:{fontSize:13,color:'var(--color-text-secondary)',padding:'2rem 0',textAlign:'center'}},
+          h('div',{style:{marginBottom:12}},'เลือกสถานี/อุปกรณ์จากเมนู'),
+          h('button',{style:{...sBP,fontSize:13,padding:'10px 20px'},onClick:()=>openDrawer()},'☰ เปิดเมนูสถานี')
+        ),
+        tab==='library'&&h(LibraryTab,{lib,setLib,askConfirm,askDelete,mt,setMt,subs,updateMod,eqTypes,setEqTypes,eqDB,setEqDB,savedByName}),
+        tab==='templates'&&h(TemplatesTab,{eqTpls,subTpls,askConfirm,onDelEq:id=>setEqTpls(p=>p.filter(t=>t.id!==id)),onDelSub:id=>setSubTpls(p=>p.filter(t=>t.id!==id))}),
+        tab==='summary'&&h(SummaryView,{subs})
+      )
+    )
+  );
+}
+ReactDOM.render(h(App),document.getElementById('root'));
+})();
+</script>
+</body>
+</html>
