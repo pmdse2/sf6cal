@@ -989,7 +989,13 @@ function App(){
   const [tab,setTab]=useState('designer');const [confirm,setConfirm]=useState(null);const [saveDlg,setSaveDlg]=useState(null);const [protectedConfirm,setProtectedConfirm]=useState(null);
   const [sbW,setSbW]=useState(280);const dragging=React.useRef(false);const startX=React.useRef(0);const startW=React.useRef(280);
   /* ── Sync state ── */
-  const [sheetsUrl,setSheetsUrl]=useState(()=>{try{return localStorage.getItem('sf6_sheets_url')||'';}catch(e){return '';}});
+  /* ── ค่า Default URL (แก้ตรงนี้เพื่อ pre-fill ให้ทุกคน) ── */
+  const DEFAULT_SHEETS_URL='https://script.google.com/macros/s/AKfycbxm08MUDofR4IltnFmga-95u-UmOfGkPp3c4MQArq_JSNlx-EYZymPR5-69oIPgZXXq/exec';
+
+  const [sheetsUrl,setSheetsUrl]=useState(()=>{
+    try{return localStorage.getItem('sf6_sheets_url')||DEFAULT_SHEETS_URL;}
+    catch(e){return DEFAULT_SHEETS_URL;}
+  });
   const [syncStatus,setSyncStatus]=useState('idle'); /* idle/loading/saving/success/error */
   const [lastSync,setLastSync]=useState(null);
   const [lastSavedBy,setLastSavedBy]=useState('');
