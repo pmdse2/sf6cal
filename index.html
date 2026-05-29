@@ -71,7 +71,7 @@
     <h1>⚡ SF6 GIS Calculator</h1>
     <div style="font-size:12px;color:#6b7280;">ฝบร. การไฟฟ้านครหลวง</div>
   </div>
-  <span class="app-badge">v10.4</span>
+  <span class="app-badge" id="versionBadge" style="cursor:pointer;" title="ดู Changelog">v10.5</span>
 </div>
 <div id="drawerOverlay" class="drawer-overlay" onclick="closeDrawer()"></div>
 <div id="drawerPanel" class="drawer-panel">
@@ -89,6 +89,10 @@ function closeDrawer(){
   document.getElementById('drawerPanel').classList.remove('open');
 }
 function isMobile(){return window.innerWidth<768;}
+document.addEventListener('DOMContentLoaded',()=>{
+  const badge=document.getElementById('versionBadge');
+  if(badge)badge.addEventListener('click',()=>window.dispatchEvent(new CustomEvent('openChangelog')));
+});
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -207,7 +211,7 @@ const cpBTs=ts=>ts.map(t=>({...t,id:nid(),modules:cpMs(t.modules||[])}));
 const cpBs=bs=>bs.map(b=>({...b,id:nid(),modules:cpMs(b.modules||[])}));
 const cpEq=e=>({id:nid(),name:e.name,kv:e.kv,mfr:e.mfr,model:e.model,zone:e.zone,bays:cpBs(e.bays||[]),templates:cpBTs(e.templates||[])});
 const cpSub=(s,nm)=>({id:nid(),name:nm,equipment:(s.equipment||[]).map(e=>cpEq(e))});
-function grp(mods){const g=[];let i=0;const isB=t=>t==='BusA'||t==='BusB';while(i<mods.length){const m=mods[i],n=mods[i+1];const prevIsBus=g.length>0&&g[g.length-1].k==='bus';if(isB(m.type)&&n&&isB(n.type)&&m.type!==n.type){g.push({k:'bus',a:m.type==='BusA'?m:n,b:m.type==='BusB'?m:n});i+=2;}else if(m.type==='DS'&&n&&n.type==='DS'&&prevIsBus){g.push({k:'ds',a:m,b:n});i+=2;}else{g.push({k:'s',m});i++;}}return g;}
+function grp(mods){const g=[];let i=0;const isB=t=>t==='BusA'||t==='BusB';while(i<mods.length){const m=mods[i],n=mods[i+1];const prevIsBus=g.length>0&&g[g.length-1].k==='bus';const prevIsBusOrDs=g.length>0&&(g[g.length-1].k==='bus'||g[g.length-1].k==='ds');if(isB(m.type)&&n&&isB(n.type)&&m.type!==n.type){g.push({k:'bus',a:m.type==='BusA'?m:n,b:m.type==='BusB'?m:n});i+=2;}else if(m.type==='DS'&&n&&n.type==='DS'&&prevIsBus){g.push({k:'ds',a:m,b:n});i+=2;}else if(m.type==='Buffer'&&n&&n.type==='Buffer'&&prevIsBusOrDs){g.push({k:'buff',a:m,b:n});i+=2;}else{g.push({k:'s',m});i++;}}return g;}
 
 const ILIB=[
   {id:6,type:'CB',mfr:'ABB',model:'ELK-04',kv:115,sf6:2.9,zone:'HV GIS'},
@@ -329,6 +333,15 @@ const modTotal=(m,sp)=>sp?((m.sfR??m.sf6)+(m.sfY??m.sf6)+(m.sfB??m.sf6)):m.sf6;
 const modPoints=(m,sp)=>sp?3:1;
 const modEdited=(m,sp)=>sp?((m.editedR?1:0)+(m.editedY?1:0)+(m.editedB?1:0)):(m.edited?1:0);
 const modAllEdited=(m,sp)=>sp?(!!m.editedR&&!!m.editedY&&!!m.editedB):!!m.edited;
+/* bayTot helpers */
+const bayAllEdited=(bay,sp)=>bay.modules.length>0&&bay.modules.every(m=>modAllEdited(m,sp));
+const bayModSum=(bay,sp)=>bay.modules.reduce((s,m)=>s+modTotal(m,sp),0);
+const bayTot=(bay,sp)=>{
+  if((bay.sf6Bay||0)>0&&!bayAllEdited(bay,sp))return bay.sf6Bay;
+  return bayModSum(bay,sp);
+};
+const bayUseNameplate=(bay,sp)=>(bay.sf6Bay||0)>0&&!bayAllEdited(bay,sp);
+const bayOverridden=(bay,sp)=>(bay.sf6Bay||0)>0&&bayAllEdited(bay,sp);
 const initSP=sf6=>({sfR:sf6,sfY:sf6,sfB:sf6,editedR:false,editedY:false,editedB:false});
 const makeMod=(base,sp,createdBy)=>({uid:nid(),type:base.type,mfr:base.mfr,model:base.model,sf6:base.sf6,edited:false,createdBy:createdBy||'',...(sp?initSP(base.sf6):{})});
 
@@ -421,33 +434,74 @@ function Conn(){return h('div',{style:{width:2,height:7,background:'var(--color-
 function YConn(){return h('svg',{width:'100%',height:12,style:{display:'block'},viewBox:'0 0 120 12'},h('line',{x1:20,y1:0,x2:60,y2:12,stroke:'#aaa',strokeWidth:1.5}),h('line',{x1:100,y1:0,x2:60,y2:12,stroke:'#aaa',strokeWidth:1.5}));}
 
 /* ── BayCol ── */
-function BayCol({bay,isSel,onSel,onRm,onEd,onEdPhase,onSvT,onDel,isDrg,isDrO,onDS,onDO,onDP,onDE,sp,askDelete,savedByName}){
+function BayCol({bay,isSel,onSel,onRm,onEd,onEdPhase,onEdBayTot,onSvT,onDel,isDrg,isDrO,onDS,onDO,onDP,onDE,sp,askDelete,savedByName}){
+  const [editBayTot,sEditBayTot]=useState(false);const [bayTotVal,sBayTotVal]=useState('');
   const gs=grp(bay.modules);
-  const tot=bay.modules.reduce((s,m)=>s+modTotal(m,sp),0);
+  const tot=bayTot(bay,sp);
+  const useNP=bayUseNameplate(bay,sp);   /* กำลังใช้ Nameplate */
+  const wasNP=bayOverridden(bay,sp);     /* Nameplate ถูก override แล้ว */
   const hasEd=bay.modules.some(m=>m.edited);
-  const allEd=bay.modules.length>0&&bay.modules.every(m=>modAllEdited(m,sp));
+  const allEd=bayAllEdited(bay,sp);
   const edN=bay.modules.reduce((s,m)=>s+modEdited(m,sp),0);
   const totN=bay.modules.reduce((s,m)=>s+modPoints(m,sp),0);
-  /* safeRm: ตรวจสิทธิ์ก่อนลบ Compartment */
   const safeRm=(uid)=>{
     const mod=bay.modules.find(m=>m.uid===uid);
     askDelete(mod,`ลบ Compartment "${mod?mod.type:''}" ออกจาก Bay นี้?`,()=>onRm(uid));
   };
-  /* SP needs more width for phase rows; non-SP bumped up too */
   const colW=sp?260:220;
   const MI=(props)=>sp?h(ModItemSP,{...props,onEdPhase}):h(ModItem,{...props,onEd});
+
+  /* sf6Bay inline edit widget */
+  const bayTotWidget=editBayTot
+    ?h('div',{style:{padding:'6px 7px',borderTop:'0.5px solid var(--color-border-tertiary)',background:'var(--color-background-secondary)'},onClick:e=>e.stopPropagation()},
+        h('div',{style:{fontSize:11,color:'var(--color-text-secondary)',marginBottom:3}},'น้ำหนัก SF6 รวมทั้ง Bay (kg)'),
+        h('div',{style:{display:'flex',gap:3,alignItems:'center'}},
+          h('input',{type:'number',step:'0.1',value:bayTotVal,autoFocus:true,
+            onChange:e=>sBayTotVal(e.target.value),
+            onKeyDown:e=>{
+              if(e.key==='Enter'){const n=parseFloat(bayTotVal);onEdBayTot(isNaN(n)||n<=0?0:n);sEditBayTot(false);}
+              if(e.key==='Escape')sEditBayTot(false);
+            },
+            style:{flex:1,fontSize:13,padding:'4px 6px',height:30,borderRadius:4}}),
+          h('span',{style:{fontSize:11,color:'var(--color-text-secondary)',flexShrink:0}},'kg'),
+          h('button',{title:'บันทึก',style:{flexShrink:0,background:'#378ADD',border:'none',color:'#fff',borderRadius:4,width:26,height:30,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'},
+            onClick:e=>{e.stopPropagation();const n=parseFloat(bayTotVal);onEdBayTot(isNaN(n)||n<=0?0:n);sEditBayTot(false);}},'✓'),
+          h('button',{title:'ยกเลิก',style:{flexShrink:0,background:'none',border:'0.5px solid var(--color-border-secondary)',borderRadius:4,width:26,height:30,fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'},
+            onClick:e=>{e.stopPropagation();sEditBayTot(false);}},'✕')
+        ),
+        (bay.sf6Bay||0)>0&&h('button',{style:{...sB,fontSize:11,marginTop:4,padding:'2px 7px',color:'#E24B4A',borderColor:'rgba(226,75,74,0.3)'},
+          onClick:e=>{e.stopPropagation();onEdBayTot(0);sEditBayTot(false);}},'ล้างค่า Nameplate')
+      )
+    :h('div',{style:{padding:'4px 7px',borderTop:'0.5px solid var(--color-border-tertiary)',background:'var(--color-background-secondary)',display:'flex',alignItems:'center',gap:5,cursor:'pointer'},
+        onClick:e=>{e.stopPropagation();sBayTotVal(bay.sf6Bay>0?String(bay.sf6Bay):'');sEditBayTot(true);}},
+        useNP
+          ?h(React.Fragment,null,
+              h('span',{style:{fontSize:10,background:'#BA7517',color:'#fff',borderRadius:3,padding:'1px 5px',flexShrink:0}},'Nameplate'),
+              h('span',{style:{fontSize:12,fontFamily:'var(--font-mono)',color:'#BA7517',fontWeight:500}},(bay.sf6Bay||0).toFixed(1),' kg'),
+              h('span',{style:{fontSize:10,color:'var(--color-text-secondary)',marginLeft:'auto'}},`${edN}/${totN} จริง`)
+            )
+          :wasNP
+          ?h(React.Fragment,null,
+              h('span',{style:{fontSize:10,background:'#1D9E75',color:'#fff',borderRadius:3,padding:'1px 5px',flexShrink:0}},'จริง'),
+              h('span',{style:{fontSize:12,fontFamily:'var(--font-mono)',color:'#1D9E75',fontWeight:500}},tot.toFixed(1),' kg'),
+              h('span',{style:{fontSize:10,color:'var(--color-text-secondary)',marginLeft:'auto'}},'Nameplate: ',(bay.sf6Bay||0).toFixed(0),'kg')
+            )
+          :h(React.Fragment,null,
+              h('span',{style:{fontSize:11,color:'var(--color-text-secondary)'}},'+ใส่น้ำหนัก Bay รวม')
+            )
+      );
   return h('div',{draggable:true,
-    style:{width:colW,flexShrink:0,border:`${isDrO||isSel?'2px':'1px'} solid ${isDrO?'#E24B4A':isSel?'#378ADD':'var(--color-border-tertiary)'}`,borderRadius:8,background:'var(--color-background-primary)',overflow:'hidden',opacity:isDrg?0.35:1,position:'relative',cursor:'pointer'},
+    style:{width:colW,flexShrink:0,border:`${isDrO||isSel?'2px':'1px'} solid ${isDrO?'#E24B4A':isSel?'#378ADD':useNP?'rgba(186,117,23,0.4)':'var(--color-border-tertiary)'}`,borderRadius:8,background:'var(--color-background-primary)',overflow:'hidden',opacity:isDrg?0.35:1,position:'relative',cursor:'pointer'},
     onDragStart:e=>{e.dataTransfer.effectAllowed='move';onDS(bay.id);},onDragOver:e=>{e.preventDefault();onDO(bay.id);},
     onDrop:e=>{e.preventDefault();onDP(bay.id);},onDragEnd:onDE,onClick:()=>onSel(bay.id)},
     isDrO&&h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:3,background:'#E24B4A',zIndex:1}}),
-    h('div',{style:{padding:'6px 7px',borderBottom:'0.5px solid var(--color-border-tertiary)',background:isSel?'rgba(55,138,221,0.07)':'var(--color-background-secondary)',display:'flex',gap:4,alignItems:'center'}},
+    h('div',{style:{padding:'6px 7px',borderBottom:'0.5px solid var(--color-border-tertiary)',background:isSel?'rgba(55,138,221,0.07)':useNP?'rgba(186,117,23,0.05)':'var(--color-background-secondary)',display:'flex',gap:4,alignItems:'center'}},
       h('span',{style:{fontSize:13,color:'var(--color-text-secondary)',opacity:0.5,flexShrink:0,userSelect:'none'}},'⠿'),
       h('span',{style:{fontSize:12,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}},bay.name),
       sp&&h('span',{style:{fontSize:9,background:'#993556',color:'#fff',borderRadius:2,padding:'0 3px',flexShrink:0}},'3Φ'),
       h('div',{style:{display:'flex',flexDirection:'column',alignItems:'flex-end',flexShrink:0}},
-        h('span',{style:{fontSize:11,fontFamily:'var(--font-mono)',color:allEd?'#378ADD':hasEd?'#BA7517':'var(--color-text-secondary)'}},tot.toFixed(1),'k'),
-        hasEd&&!allEd&&h('span',{style:{fontSize:10,color:'#BA7517'}},edN,'/',totN)
+        h('span',{style:{fontSize:11,fontFamily:'var(--font-mono)',color:useNP?'#BA7517':allEd?'#378ADD':hasEd?'#BA7517':'var(--color-text-secondary)'}},tot.toFixed(1),'k'),
+        !useNP&&hasEd&&!allEd&&h('span',{style:{fontSize:10,color:'#BA7517'}},edN,'/',totN)
       )
     ),
     h('div',{style:{padding:5,minHeight:50}},
@@ -456,10 +510,13 @@ function BayCol({bay,isSel,onSel,onRm,onEd,onEdPhase,onSvT,onDel,isDrg,isDrO,onD
         return h(React.Fragment,{key:i},yC?h(YConn):i>0?h(Conn):null,
           g.k==='bus'?h('div',{style:{display:'flex',gap:2}},h(MI,{m:g.a,onRm:safeRm,half:true}),h(MI,{m:g.b,onRm:safeRm,half:true}))
           :g.k==='ds'?h('div',{style:{display:'flex',gap:2}},h(MI,{m:g.a,onRm:safeRm,half:true,lbl:'DS-A'}),h(MI,{m:g.b,onRm:safeRm,half:true,lbl:'DS-B'}))
+          :g.k==='buff'?h('div',{style:{display:'flex',gap:2}},h(MI,{m:g.a,onRm:safeRm,half:true,lbl:'Buff-A'}),h(MI,{m:g.b,onRm:safeRm,half:true,lbl:'Buff-B'}))
           :h(MI,{m:g.m,onRm:safeRm})
         );
       })
     ),
+    /* sf6Bay widget */
+    bayTotWidget,
     h('div',{style:{borderTop:'0.5px solid var(--color-border-tertiary)',padding:'4px 6px',display:'flex',justifyContent:'space-between',gap:4}},
       h('button',{style:{...sB,fontSize:11,padding:'2px 6px'},onClick:e=>{e.stopPropagation();onSvT(bay);}},'+ Bay Tpl'),
       h('button',{style:{...sBD,fontSize:11,padding:'2px 6px'},onClick:e=>{e.stopPropagation();onDel(bay.id);}},'ลบ')
@@ -484,13 +541,13 @@ function QuickAddCompartmentForm({eq,onAdd,onCancel,mt,setMt}){
 }
 
 /* ── DesignerView (Bay Configuration) ── */
-function DesignerView({eq,sid,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addModFn,edSf6Fn,edSf6PhaseFn,saveTplFn,delBayFn,delTplFn,reorderFn,askConfirm,askDelete,mt,setMt,onSaveEqTpl,savedByName}){
+function DesignerView({eq,sid,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addModFn,edSf6Fn,edSf6PhaseFn,edBayTotFn,saveTplFn,delBayFn,delTplFn,reorderFn,askConfirm,askDelete,mt,setMt,onSaveEqTpl,savedByName}){
   const [nbn,sNbn]=useState('');const [stpl,sStpl]=useState('');const [showNB,sShowNB]=useState(false);
   const [savBayT,sSavBayT]=useState(null);const [bayTNm,sBayTNm]=useState('');
   const [showQA,sShowQA]=useState(false);const [drg,sDrg]=useState(null);const [drO,sDrO]=useState(null);
   const selBO=eq.bays.find(b=>b.id===selBay);
   const sp=!!eq.singlePhase;
-  const eqTot=eq.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modTotal(m,sp),0),0);
+  const eqTot=eq.bays.reduce((s,b)=>s+bayTot(b,sp),0);
   const eqLib=lib.filter(m=>m.mfr===eq.mfr&&m.model===eq.model&&m.kv===eq.kv);
   function handleDrop(tid){if(drg===null||drg===tid){sDrg(null);sDrO(null);return;}const bs=[...eq.bays];const f=bs.findIndex(b=>b.id===drg),t2=bs.findIndex(b=>b.id===tid);if(f===-1||t2===-1){sDrg(null);sDrO(null);return;}const[mv]=bs.splice(f,1);bs.splice(t2,0,mv);reorderFn(sid,eq.id,bs);sDrg(null);sDrO(null);}
   const eqEdited=eq.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modEdited(m,sp),0),0);
@@ -543,6 +600,7 @@ function DesignerView({eq,sid,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addMo
           onSel:id=>setSelBay(p=>p===id?null:id),onRm:uid=>rmModFn(sid,eq.id,b.id,uid),
           onEd:(uid,_ph,v)=>edSf6Fn(sid,eq.id,b.id,uid,v),
           onEdPhase:(uid,ph,v)=>edSf6PhaseFn(sid,eq.id,b.id,uid,ph,v),
+          onEdBayTot:(v)=>edBayTotFn(sid,eq.id,b.id,v),
           sp,onSvT:bay=>sSavBayT(bay),askDelete,savedByName,
           onDel:id=>{const bay=eq.bays.find(b=>b.id===id);askDelete(bay,`ลบ Bay "${bay?.name}"?`,()=>{delBayFn(sid,eq.id,id);if(selBay===id)setSelBay(null);})}
         })),
@@ -711,7 +769,7 @@ function LibraryTab({lib,setLib,askConfirm,askDelete,mt,setMt,subs,updateMod,eqT
 
 /* ── Templates Tab ── */
 function TemplatesTab({eqTpls,subTpls,askConfirm,onDelEq,onDelSub}){
-  const eqCard=t=>{const bC=t.bays?t.bays.length:0;const mC=t.bays?t.bays.reduce((s,b)=>s+b.modules.length,0):0;const sp=!!t.singlePhase;const sf=t.bays?t.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modTotal(m,sp),0),0):0;
+  const eqCard=t=>{const bC=t.bays?t.bays.length:0;const mC=t.bays?t.bays.reduce((s,b)=>s+b.modules.length,0):0;const sp=!!t.singlePhase;const sf=t.bays?t.bays.reduce((s,b)=>s+bayTot(b,sp),0):0;
     return h('div',{key:t.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 13px',border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,marginBottom:7}},
       h('div',null,
         h('div',{style:{fontWeight:500,fontSize:13,marginBottom:4}},t.name),
@@ -719,7 +777,7 @@ function TemplatesTab({eqTpls,subTpls,askConfirm,onDelEq,onDelSub}){
       ),
       h('button',{style:{...sBD},onClick:()=>askConfirm(`ลบ "${t.name}"?`,()=>onDelEq(t.id))},'ลบ')
     );};
-  const subCard=t=>{const eqC=t.equipment?t.equipment.length:0;const bC=t.equipment?t.equipment.reduce((s,e)=>s+(e.bays?e.bays.length:0),0):0;const sf=t.equipment?t.equipment.reduce((s,e)=>{const sp=!!e.singlePhase;return s+(e.bays?e.bays.reduce((ss,b)=>ss+b.modules.reduce((sss,m)=>sss+modTotal(m,sp),0),0):0);}):0;
+  const subCard=t=>{const eqC=t.equipment?t.equipment.length:0;const bC=t.equipment?t.equipment.reduce((s,e)=>s+(e.bays?e.bays.length:0),0):0;const sf=t.equipment?t.equipment.reduce((s,e)=>{const sp=!!e.singlePhase;return s+(e.bays?e.bays.reduce((ss,b)=>ss+bayTot(b,sp),0):0);}):0;
     return h('div',{key:t.id,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'11px 13px',border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,marginBottom:7}},
       h('div',null,h('div',{style:{fontWeight:500,fontSize:13,marginBottom:4}},t.name),h('span',{style:{fontSize:12,color:'var(--color-text-secondary)'}},eqC,' อุปกรณ์ · ',bC,' bays รวม · ',sf.toFixed(1),' kg SF6')),
       h('button',{style:{...sBD},onClick:()=>askConfirm(`ลบ "${t.name}"?`,()=>onDelSub(t.id))},'ลบ')
@@ -742,28 +800,30 @@ function TemplatesTab({eqTpls,subTpls,askConfirm,onDelEq,onDelSub}){
 
 /* ── Summary ── */
 function SummaryView({subs}){
-  const grand=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+b.modules.reduce((ssss,m)=>ssss+modTotal(m,sp),0),0);},0),0);
+  const grand=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+bayTot(b,sp),0);},0),0);
   const gM=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+b.modules.reduce((ssss,m)=>ssss+modPoints(m,sp),0),0);},0),0);
   const gE=subs.reduce((s,su)=>s+su.equipment.reduce((ss,e)=>{const sp=!!e.singlePhase;return ss+e.bays.reduce((sss,b)=>sss+b.modules.reduce((ssss,m)=>ssss+modEdited(m,sp),0),0);},0),0);
   return h('div',null,
     h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:16}},
       [{l:'SF6 รวม',v:grand.toFixed(2)+' kg'},{l:'จำนวนสถานี',v:subs.length+' สถานี'},{l:'จริง/ประมาณการ',v:`${gE} / ${gM-gE}`}].map(({l,v})=>h('div',{key:l,style:{background:'var(--color-background-secondary)',borderRadius:8,padding:'10px 12px',textAlign:'center'}},h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginBottom:4}},l),h('div',{style:{fontSize:17,fontWeight:500,fontFamily:'var(--font-mono)'}},v)))
     ),
-    subs.map(su=>{const subTot=su.equipment.reduce((s,e)=>{const sp=!!e.singlePhase;return s+e.bays.reduce((ss,b)=>ss+b.modules.reduce((sss,m)=>sss+modTotal(m,sp),0),0);},0);
+    subs.map(su=>{const subTot=su.equipment.reduce((s,e)=>{const sp=!!e.singlePhase;return s+e.bays.reduce((ss,b)=>ss+bayTot(b,sp),0);},0);
       return h('div',{key:su.id,style:{marginBottom:16}},
         h('div',{style:{fontWeight:500,fontSize:14,marginBottom:9,display:'flex',justifyContent:'space-between',paddingBottom:7,borderBottom:'0.5px solid var(--color-border-tertiary)'}},h('span',null,su.name),h('span',{style:{fontFamily:'var(--font-mono)',fontSize:13,color:'var(--color-text-secondary)',fontWeight:400}},subTot.toFixed(2),' kg')),
         h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:9}},
-          su.equipment.map(e=>{const sp=!!e.singlePhase;const eTot=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modTotal(m,sp),0),0);const eMods=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modPoints(m,sp),0),0);const eEd=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modEdited(m,sp),0),0);
+          su.equipment.map(e=>{const sp=!!e.singlePhase;const eTot=e.bays.reduce((s,b)=>s+bayTot(b,sp),0);const eMods=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modPoints(m,sp),0),0);const eEd=e.bays.reduce((s,b)=>s+b.modules.reduce((ss,m)=>ss+modEdited(m,sp),0),0);
             return h('div',{key:e.id,style:{border:'0.5px solid var(--color-border-tertiary)',borderRadius:8,padding:'11px 13px'}},
               h('div',{style:{display:'flex',justifyContent:'space-between',marginBottom:7}},h('div',null,h('div',{style:{fontWeight:500,fontSize:13}},e.name),h('div',{style:{fontSize:12,color:'var(--color-text-secondary)'}},e.mfr,' ',e.model)),h(Tag,null,e.kv+'kV')),
               h('div',{style:{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:5,marginBottom:7}},
                 [['Bays',e.bays.length],['SF6',eTot.toFixed(1)+' kg'],['จริง',`${eEd}/${eMods}`]].map(([l,v])=>h('div',{key:l,style:{textAlign:'center',padding:'5px',background:'var(--color-background-secondary)',borderRadius:4}},h('div',{style:{fontSize:13,fontWeight:500,fontFamily:'var(--font-mono)'}},v),h('div',{style:{fontSize:11,color:'var(--color-text-secondary)'}},l)))
               ),
-              e.bays.map(b=>{const bT=b.modules.reduce((s,m)=>s+modTotal(m,sp),0);const bEd=b.modules.reduce((s,m)=>s+modEdited(m,sp),0);const bTotN=b.modules.reduce((s,m)=>s+modPoints(m,sp),0);
+              e.bays.map(b=>{const bT=bayTot(b,sp);const bEd=b.modules.reduce((s,m)=>s+modEdited(m,sp),0);const bTotN=b.modules.reduce((s,m)=>s+modPoints(m,sp),0);const bNP=bayUseNameplate(b,sp);const bOv=bayOverridden(b,sp);
                 return h('div',{key:b.id,style:{display:'flex',justifyContent:'space-between',padding:'3px 0',borderTop:'0.5px solid var(--color-border-tertiary)',fontSize:12}},
                   h('span',null,b.name),h('div',{style:{display:'flex',gap:6,alignItems:'center'}},
-                    bEd>0&&h('span',{style:{fontSize:11,color:bEd===bTotN?'#378ADD':'#BA7517'}},`${bEd}/${bTotN}จริง`),
-                    h('span',{style:{fontFamily:'var(--font-mono)',color:'var(--color-text-secondary)'}},bT.toFixed(2),' kg')
+                    bNP&&h('span',{style:{fontSize:10,background:'#BA7517',color:'#fff',borderRadius:3,padding:'1px 4px'}},'Nameplate'),
+                    bOv&&h('span',{style:{fontSize:10,background:'#1D9E75',color:'#fff',borderRadius:3,padding:'1px 4px'}},'จริง'),
+                    !bNP&&!bOv&&bEd>0&&h('span',{style:{fontSize:11,color:bEd===bTotN?'#378ADD':'#BA7517'}},`${bEd}/${bTotN}จริง`),
+                    h('span',{style:{fontFamily:'var(--font-mono)',color:bNP?'#BA7517':bOv?'#1D9E75':'var(--color-text-secondary)'}},bT.toFixed(2),' kg')
                   )
                 );
               })
@@ -927,7 +987,85 @@ function ProtectedConfirmDlg({msg,createdBy,onYes,onNo}){
   );
 }
 
-/* ── SettingsModal ── */
+/* ── ChangelogModal ── */
+const CHANGELOG=[
+  {v:'v10.5',date:'พ.ค. 2569',title:'Buffer Pairing',items:[
+    'Buffer + Buffer ต่อจาก Bus หรือ DS group → แสดงเป็น Buff-A / Buff-B (เหมือน DS-A/DS-B)',
+    'Buffer ที่ตำแหน่งอื่นยังคงแสดงแยกกันตามปกติ',
+  ]},
+  {v:'v10.4',date:'พ.ค. 2569',title:'Responsive Mobile/Tablet + Nameplate SF6',items:[
+    'มือถือ (< 768px): Sidebar เปลี่ยนเป็น Drawer เปิดด้วยปุ่ม ☰',
+    'Tablet (≥ 768px): Sidebar แสดงถาวรด้านซ้าย',
+    'Touch target ทุกปุ่ม ≥ 44px, ป้องกัน iOS zoom',
+    'เพิ่มช่อง น้ำหนัก SF6 รวมทั้ง Bay (Nameplate)',
+    'ถ้ามี Nameplate และยังไม่ครบทุก compartment → ใช้ Nameplate',
+    'เมื่อกรอกค่าจริงครบทุก compartment → ใช้ผลรวมจริงแทน Nameplate',
+    'Default Sheets URL ฝังในไฟล์ได้เลย',
+  ]},
+  {v:'v10.3',date:'พ.ค. 2569',title:'Security & Permission System',items:[
+    'ต้องกด 📥 โหลด ก่อนจึงกรอกรหัสพนักงานได้',
+    'รหัสพนักงานต้องเป็นตัวเลข 7 หลักเท่านั้น',
+    'ใช้ sessionStorage → รหัสล้างอัตโนมัติเมื่อปิด browser',
+    'ลบของตัวเอง → Confirm ปกติ',
+    'ลบของคนอื่น / ไม่มี createdBy → ต้องใส่รหัสผู้ดูแล',
+    'ครอบคลุม: สถานี, อุปกรณ์, Bay, Compartment ใน Bay และ Library',
+  ]},
+  {v:'v10.2',date:'พ.ค. 2569',title:'Google Sheets Sync',items:[
+    'SyncBar: ปุ่ม 📥 โหลด / 📤 บันทึก / ⚙️ ตั้งค่า',
+    'บันทึกข้อมูลทั้งหมดลง Google Sheets ผ่าน Apps Script',
+    'Backup อัตโนมัติ 10 ครั้งล่าสุด',
+    'แสดงเวลาและชื่อผู้บันทึกล่าสุด',
+  ]},
+  {v:'v10.1',date:'พ.ค. 2569',title:'Equipment Type & Smart Dropdown',items:[
+    'เพิ่ม Compartment ประเภท Busbar และ Buffer',
+    'ระบบ "ประเภทอุปกรณ์" แบบ Shared/Dynamic',
+    'Smart Dropdown ยี่ห้อ/รุ่น กรองตามแรงดันและประเภท',
+    '+ เพิ่มใหม่ พร้อม duplicate check (case-insensitive)',
+    'ฐานข้อมูล GIS/GCB จากข้อมูล กฟน. (ไม่รวม Metal-Clad)',
+  ]},
+  {v:'v10.0',date:'พ.ค. 2569',title:'Single Phase Enclosure & UI Improvements',items:[
+    'Single Phase Enclosure: กรอก SF6 จริงแยก R/Y/B ต่อ Compartment',
+    'DS + DS ต่อจาก Bus → DS-A/DS-B เท่านั้น',
+    'Bay column ขนาดใหญ่ขึ้น, Edit mode สะดวกขึ้น',
+    'ป้าย "จริง" แสดงสถานะการกรอกค่าจริง',
+  ]},
+  {v:'v9.x',date:'ก่อนหน้า',title:'Base Version',items:[
+    'รายชื่อสถานี 164 แห่ง (กฟน.) เรียงตามอักษรไทย',
+    'Bay Configuration: Drag & Drop สลับ Bay, Bus/DS grouping',
+    'Compartment Library: ยี่ห้อ/รุ่น, เพิ่ม/แก้ไข/ลบ',
+    'Templates: Equipment Template, Substation Template',
+    'Summary Tab: SF6 รวมทุกระดับ',
+    'Sidebar ปรับความกว้างด้วยการลาก',
+  ]},
+];
+
+function ChangelogModal({onClose}){
+  return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:600,display:'flex',alignItems:'center',justifyContent:'center',padding:16}},
+    h('div',{style:{background:'var(--color-background-primary)',border:'0.5px solid var(--color-border-secondary)',borderRadius:12,padding:'0',width:520,maxWidth:'96vw',maxHeight:'85vh',display:'flex',flexDirection:'column',boxShadow:'0 16px 48px rgba(0,0,0,0.25)'}},
+      /* Header */
+      h('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'0.5px solid var(--color-border-tertiary)'}},
+        h('div',null,
+          h('div',{style:{fontSize:16,fontWeight:600}},'⚡ SF6 GIS Calculator'),
+          h('div',{style:{fontSize:12,color:'var(--color-text-secondary)',marginTop:2}},'Release Notes / Changelog')
+        ),
+        h('button',{style:{...sB,padding:'4px 10px',fontSize:14},onClick:onClose},'✕')
+      ),
+      /* Scrollable content */
+      h('div',{style:{overflowY:'auto',padding:'16px 20px',flex:1}},
+        CHANGELOG.map((log,i)=>h('div',{key:log.v,style:{marginBottom:i<CHANGELOG.length-1?20:0}},
+          h('div',{style:{display:'flex',alignItems:'baseline',gap:8,marginBottom:6}},
+            h('span',{style:{fontSize:13,fontWeight:600,background:i===0?'rgba(55,138,221,0.12)':'var(--color-background-secondary)',color:i===0?'#185FA5':'var(--color-text-secondary)',border:`0.5px solid ${i===0?'rgba(55,138,221,0.3)':'var(--color-border-secondary)'}`,borderRadius:6,padding:'2px 8px',flexShrink:0}},log.v),
+            h('span',{style:{fontSize:13,fontWeight:500,flex:1}},log.title),
+            h('span',{style:{fontSize:11,color:'var(--color-text-secondary)',flexShrink:0}},log.date)
+          ),
+          h('ul',{style:{paddingLeft:18,margin:0}},
+            log.items.map((item,j)=>h('li',{key:j,style:{fontSize:12,color:'var(--color-text-secondary)',lineHeight:1.8}},item))
+          )
+        ))
+      )
+    )
+  );
+}
 function SettingsModal({url,onSave,onClose}){
   const [v,sV]=useState(url||'');
   return h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center'}},
@@ -1000,6 +1138,12 @@ function App(){
   const [lastSync,setLastSync]=useState(null);
   const [lastSavedBy,setLastSavedBy]=useState('');
   const [showSettings,setShowSettings]=useState(false);
+  const [showChangelog,setShowChangelog]=useState(false);
+  React.useEffect(()=>{
+    const fn=()=>setShowChangelog(true);
+    window.addEventListener('openChangelog',fn);
+    return()=>window.removeEventListener('openChangelog',fn);
+  },[]);
   const [savedByName,setSavedByName]=useState(''); /* sessionStorage: ล้างทุกครั้งที่ปิด tab */
   const [hasLoaded,setHasLoaded]=useState(false); /* ต้องโหลดข้อมูลก่อนจึงกรอกรหัสได้ */
   /* ── Sync helpers ── */
@@ -1083,7 +1227,8 @@ function App(){
   function updateMod(mid,nd){const old=lib.find(m=>m.id===mid);if(!old)return;const{type:ot,mfr:om,model:omd}=old;setLib(p=>p.map(m=>m.id===mid?{...m,...nd}:m));setSubs(p=>p.map(su=>({...su,equipment:su.equipment.map(e=>({...e,bays:e.bays.map(b=>({...b,modules:b.modules.map(bm=>(bm.type===ot&&bm.mfr===om&&bm.model===omd&&!bm.edited)?{...bm,...nd,uid:bm.uid}:bm)}))}))})  ));}
   function onSaveEqTpl(eq){setSaveDlg({title:'บันทึก รูปแบบอุปกรณ์',existing:eqTpls,onSave:nm=>{setEqTpls(p=>[...p,{...cpEq(eq),id:nid(),name:nm}]);setSaveDlg(null);}});}
   function onSaveSubTpl(sub){setSaveDlg({title:'บันทึก รูปแบบสถานี',existing:subTpls,onSave:nm=>{setSubTpls(p=>[...p,{...cpSub(sub,nm),id:nid(),name:nm}]);setSaveDlg(null);}});}
-  const addBayFn=(sid,eid,b)=>setSubs(p=>uE(p,sid,eid,x=>({...x,bays:[...x.bays,{...b,createdBy:savedByName}]})));
+  const addBayFn=(sid,eid,b)=>setSubs(p=>uE(p,sid,eid,x=>({...x,bays:[...x.bays,{...b,sf6Bay:0,createdBy:savedByName}]})));
+  const edBayTotFn=(sid,eid,bid,val)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,sf6Bay:val})));
   const rmModFn=(sid,eid,bid,uid)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:b.modules.filter(m=>m.uid!==uid)})));
   const addModFn=(sid,eid,bid,mod)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:[...b.modules,mod]})));
   const edSf6Fn=(sid,eid,bid,uid,sf6)=>setSubs(p=>uB(p,sid,eid,bid,b=>({...b,modules:b.modules.map(m=>m.uid===uid?{...m,sf6,edited:true}:m)})));
@@ -1113,6 +1258,7 @@ function App(){
     saveDlg&&h(SaveTplDlg,{title:saveDlg.title,existing:saveDlg.existing,onSave:saveDlg.onSave,onCancel:()=>setSaveDlg(null)}),
     protectedConfirm&&h(ProtectedConfirmDlg,{msg:protectedConfirm.msg,createdBy:protectedConfirm.createdBy,onYes:()=>{protectedConfirm.fn();setProtectedConfirm(null);},onNo:()=>setProtectedConfirm(null)}),
     showSettings&&h(SettingsModal,{url:sheetsUrl,onSave:saveSettings,onClose:()=>setShowSettings(false)}),
+    showChangelog&&h(ChangelogModal,{onClose:()=>setShowChangelog(false)}),
     h(SyncBar,{status:syncStatus,lastSync,savedBy:lastSavedBy,onLoad:loadFromSheets,onSave:saveToSheets,onSettings:()=>setShowSettings(true)}),
     /* ผู้บันทึก */
     h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:6,fontSize:13}},
@@ -1153,7 +1299,7 @@ function App(){
             style:{color:tab===k?'var(--color-text-primary)':'var(--color-text-secondary)',borderBottom:tab===k?'2px solid var(--color-text-primary)':'2px solid transparent',fontWeight:tab===k?500:400,marginBottom:-1,background:'none',border:'none',borderBottom:tab===k?'2px solid var(--color-text-primary)':'2px solid transparent',cursor:'pointer',padding:'8px 12px',fontSize:13,whiteSpace:'nowrap',minHeight:'40px',touchAction:'manipulation'},
             onClick:()=>setTab(k)},l))
         ),
-        tab==='designer'&&eq&&h(DesignerView,{eq,sid:selSub,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addModFn,edSf6Fn,edSf6PhaseFn,saveTplFn,delBayFn,delTplFn,reorderFn,askConfirm,askDelete,mt,setMt,onSaveEqTpl,savedByName}),
+        tab==='designer'&&eq&&h(DesignerView,{eq,sid:selSub,selBay,setSelBay,lib,setLib,addBayFn,rmModFn,addModFn,edSf6Fn,edSf6PhaseFn,edBayTotFn,saveTplFn,delBayFn,delTplFn,reorderFn,askConfirm,askDelete,mt,setMt,onSaveEqTpl,savedByName}),
         tab==='designer'&&!eq&&h('div',{style:{fontSize:13,color:'var(--color-text-secondary)',padding:'2rem 0',textAlign:'center'}},
           h('div',{style:{marginBottom:12}},'เลือกสถานี/อุปกรณ์จากเมนู'),
           h('button',{style:{...sBP,fontSize:13,padding:'10px 20px'},onClick:()=>openDrawer()},'☰ เปิดเมนูสถานี')
